@@ -1,0 +1,3 @@
+/home/lengmou/workspace/bookkeeping/PC/build/CMakeFiles/bookkeeping.dir
+/home/lengmou/workspace/bookkeeping/PC/build/CMakeFiles/edit_cache.dir
+/home/lengmou/workspace/bookkeeping/PC/build/CMakeFiles/rebuild_cache.dir

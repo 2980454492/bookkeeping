@@ -1,0 +1,171 @@
+/* ── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Microsoft YaHei", sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+#app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 24px;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e8e8e8;
+}
+.header h1 { font-size: 24px; font-weight: 700; }
+.version  { color: #999; font-size: 13px; }
+
+/* ── Summary Cards ───────────────────────────────────────── */
+.summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    text-align: center;
+}
+.card-label { font-size: 13px; color: #888; margin-bottom: 6px; }
+.card-value { font-size: 26px; font-weight: 700; }
+.income-card  .card-value { color: #52c41a; }
+.expense-card .card-value { color: #ff4d4f; }
+.balance-card .card-value { color: #1677ff; }
+
+/* ── Sections ────────────────────────────────────────────── */
+.section {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* ── Form ────────────────────────────────────────────────── */
+.add-form .form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.form-group {
+    flex: 1;
+    min-width: 120px;
+}
+.form-group label {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d9d9d9;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.2s;
+}
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-primary { background: #1677ff; color: #fff; }
+.btn-primary:hover { background: #4096ff; }
+.btn-danger  { background: #ff4d4f; color: #fff; padding: 4px 12px; font-size: 12px; }
+.btn-danger:hover { background: #ff7875; }
+.btn-sm { padding: 5px 12px; font-size: 12px; background: #f0f0f0; color: #333; }
+.btn-sm:hover { background: #e0e0e0; }
+
+/* ── Filters ─────────────────────────────────────────────── */
+.filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.filters select {
+    padding: 6px 10px;
+    border: 1px solid #d9d9d9;
+    border-radius: 6px;
+    font-size: 13px;
+}
+.record-count { color: #999; font-size: 13px; margin-left: auto; }
+
+/* ── Table ───────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+thead th {
+    background: #fafafa;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #e8e8e8;
+    white-space: nowrap;
+}
+tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    white-space: nowrap;
+}
+tbody tr:hover { background: #f5f9ff; }
+.empty-row td { text-align: center; color: #bbb; padding: 40px; }
+.type-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.type-income  { background: #f6ffed; color: #52c41a; }
+.type-expense { background: #fff2f0; color: #ff4d4f; }
+.amount-income  { color: #52c41a; font-weight: 600; }
+.amount-expense { color: #ff4d4f; font-weight: 600; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .summary { grid-template-columns: 1fr; }
+    .add-form .form-row { flex-direction: column; }
+    #app { padding: 12px; }
+}

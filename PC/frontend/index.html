@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人记账</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <h1>💰 个人记账</h1>
+            <span class="version">v1.0</span>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="summary">
+            <div class="card income-card">
+                <div class="card-label">总收入</div>
+                <div class="card-value" id="sumIncome">¥0.00</div>
+            </div>
+            <div class="card expense-card">
+                <div class="card-label">总支出</div>
+                <div class="card-value" id="sumExpense">¥0.00</div>
+            </div>
+            <div class="card balance-card">
+                <div class="card-label">结余</div>
+                <div class="card-value" id="sumBalance">¥0.00</div>
+            </div>
+        </div>
+
+        <!-- Add Record Form -->
+        <div class="section">
+            <h2>新增记录</h2>
+            <form id="addForm" class="add-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fType">类型 *</label>
+                        <select id="fType" required>
+                            <option value="expense">支出</option>
+                            <option value="income">收入</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fAmount">金额 *</label>
+                        <input type="number" id="fAmount" placeholder="0.00" step="0.01" min="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fDatetime">时间 *</label>
+                        <input type="datetime-local" id="fDatetime" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fCatL1">一级分类 *</label>
+                        <select id="fCatL1" required>
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="catL2Group">
+                        <label for="fCatL2">二级分类</label>
+                        <select id="fCatL2">
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fNote">备注</label>
+                        <input type="text" id="fNote" placeholder="可选" maxlength="200">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">➕ 添加记录</button>
+            </form>
+        </div>
+
+        <!-- Filters -->
+        <div class="section">
+            <h2>记录列表</h2>
+            <div class="filters">
+                <select id="filterType">
+                    <option value="">全部类型</option>
+                    <option value="expense">仅支出</option>
+                    <option value="income">仅收入</option>
+                </select>
+                <select id="filterCatL1">
+                    <option value="">全部分类</option>
+                </select>
+                <button class="btn btn-sm" id="btnRefresh">🔄 刷新</button>
+                <span class="record-count" id="recordCount">0 条记录</span>
+            </div>
+            <div class="table-wrap">
+                <table id="recordTable">
+                    <thead>
+                        <tr>
+                            <th>时间</th>
+                            <th>类型</th>
+                            <th>金额</th>
+                            <th>一级分类</th>
+                            <th>二级分类</th>
+                            <th>备注</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recordBody">
+                        <tr class="empty-row">
+                            <td colspan="7">暂无记录，添加一条吧 🎉</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>
