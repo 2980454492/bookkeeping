@@ -1,0 +1,6 @@
+CompileDatabase: ../build
+CompileFlags:
+  Add:
+    - -std=c++17
+    - -Ilibs
+    - -Isrc

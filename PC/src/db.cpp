@@ -1,3 +1,10 @@
+// db.cpp — SQLite 持久化层实现
+//
+// SQL 策略说明：
+//   - 记录 CRUD：预编译语句（? 占位符），防注入且性能稳定
+//   - 分类部分动态 SQL：使用 escape() 转义单引号后拼接（本机单用户场景）
+//   - 分类名在 records 表中以 TEXT 冗余存储，改分类名不会自动回写历史记录
+
 #include "db.h"
 
 #include <json.hpp>
@@ -8,8 +15,9 @@
 
 using json = nlohmann::json;
 
-// ── 工具函数：SQL 字符串转义 ─────────────────────────────────────────
+// ── 内部工具 ───────────────────────────────────────────────────────
 
+/** 将字符串中的单引号替换为 SQL 标准的 ''，用于拼接字面量 */
 std::string Database::escape(const std::string& s) const {
     std::string out;
     out.reserve(s.size() + 10);
@@ -20,6 +28,7 @@ std::string Database::escape(const std::string& s) const {
     return out;
 }
 
+/** 执行无结果集的 SQL；失败时抛 std::runtime_error（含 SQL 文本便于调试） */
 void Database::executeSql(const std::string& sql) {
     char* err = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &err);
@@ -30,7 +39,7 @@ void Database::executeSql(const std::string& sql) {
     }
 }
 
-// ── 打开 / 关闭数据库 ────────────────────────────────────────────────
+// ── 打开 / 关闭 ────────────────────────────────────────────────────
 
 bool Database::open(const std::string& db_path) {
     int rc = sqlite3_open(db_path.c_str(), &db_);
@@ -38,8 +47,9 @@ bool Database::open(const std::string& db_path) {
         std::cerr << "[DB] 无法打开数据库: " << sqlite3_errmsg(db_) << std::endl;
         return false;
     }
-    // 启用 WAL 模式提升并发读取性能
+    // WAL：读写可并发，适合本地服务 + 浏览器多请求
     executeSql("PRAGMA journal_mode=WAL");
+    // 删除一级分类时自动删除其下二级分类
     executeSql("PRAGMA foreign_keys=ON");
     std::cout << "[DB] 数据库已打开: " << db_path << std::endl;
     return true;
@@ -57,9 +67,10 @@ Database::~Database() {
     close();
 }
 
-// ── 建表 ──────────────────────────────────────────────────────────────
+// ── 建表 ────────────────────────────────────────────────────────────
 
 void Database::createTables() {
+    // 一级分类：支出/收入分开，type 由 CHECK 约束限定
     executeSql(R"(
         CREATE TABLE IF NOT EXISTS category_l1 (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +82,7 @@ void Database::createTables() {
         )
     )");
 
+    // 二级分类：l1_id 外键，ON DELETE CASCADE
     executeSql(R"(
         CREATE TABLE IF NOT EXISTS category_l2 (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,6 +93,7 @@ void Database::createTables() {
         )
     )");
 
+    // 收支流水：分类字段存名称快照，与 category_* 表无外键关联
     executeSql(R"(
         CREATE TABLE IF NOT EXISTS records (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +108,6 @@ void Database::createTables() {
         )
     )");
 
-    // 创建索引加速查询
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_datetime ON records(datetime)");
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_type ON records(type)");
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_cat1 ON records(category_l1)");
@@ -103,7 +115,8 @@ void Database::createTables() {
     std::cout << "[DB] 数据表已创建 / 已验证。" << std::endl;
 }
 
-// ── 从 JSON 导入默认分类 ─────────────────────────────────────────────
+// ── 从 categories.json 导入默认分类 ───────────────────────────────
+// JSON 结构：{ "expense": [{ name, icon, subcategories: [...] }], "income": [...] }
 
 bool Database::importCategoriesFromJson(const std::string& json_path) {
     std::ifstream f(json_path);
@@ -121,21 +134,19 @@ bool Database::importCategoriesFromJson(const std::string& json_path) {
 
     int sort = 0;
 
-    // 导入支出分类
+    // 支出：每个一级下可挂多个二级
     if (j.contains("expense") && j["expense"].is_array()) {
         for (const auto& cat : j["expense"]) {
             std::string name = cat.value("name", "");
             std::string icon = cat.value("icon", "");
             if (name.empty()) continue;
 
-            // 插入一级分类
             std::string sql = "INSERT INTO category_l1 (name, type, icon, sort_order) VALUES ('"
                             + escape(name) + "', 'expense', '" + escape(icon) + "', " + std::to_string(sort++) + ")";
             executeSql(sql);
 
             int l1_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
 
-            // 插入二级分类
             if (cat.contains("subcategories") && cat["subcategories"].is_array()) {
                 int l2_sort = 0;
                 for (const auto& sub : cat["subcategories"]) {
@@ -149,7 +160,7 @@ bool Database::importCategoriesFromJson(const std::string& json_path) {
         }
     }
 
-    // 导入收入分类（无二级分类）
+    // 收入：模板中通常只有一级，无 subcategories 数组
     sort = 0;
     if (j.contains("income") && j["income"].is_array()) {
         for (const auto& cat : j["income"]) {
@@ -167,18 +178,18 @@ bool Database::importCategoriesFromJson(const std::string& json_path) {
     return true;
 }
 
+/** 清空分类表后重新导入；已有收支记录保留，仅分类元数据被重置 */
 bool Database::resetCategories(const std::string& json_path) {
     executeSql("DELETE FROM category_l2");
     executeSql("DELETE FROM category_l1");
     return importCategoriesFromJson(json_path);
 }
 
-// ── 初始化 ────────────────────────────────────────────────────────────
+// ── 初始化（main 启动时调用一次）──────────────────────────────────
 
 bool Database::initialize(const std::string& categories_json_path) {
     createTables();
 
-    // 检查分类表是否为空
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM category_l1", -1, &stmt, nullptr);
     int count = 0;
@@ -189,6 +200,7 @@ bool Database::initialize(const std::string& categories_json_path) {
         sqlite3_finalize(stmt);
     }
 
+    // 仅首次（或用户清空分类后）导入，避免覆盖用户自定义分类
     if (count == 0) {
         std::cout << "[DB] 分类表为空，正在导入默认分类..." << std::endl;
         return importCategoriesFromJson(categories_json_path);
@@ -197,13 +209,14 @@ bool Database::initialize(const std::string& categories_json_path) {
     return true;
 }
 
-// ── 记录 CRUD ─────────────────────────────────────────────────────────
+// ── 记录：分页列表查询 ─────────────────────────────────────────────
 
 RecordListResult Database::queryRecords(const RecordQuery& q) {
     RecordListResult result;
     result.page = q.page;
     result.page_size = q.page_size;
 
+    // 动态 WHERE：空字段表示不参与筛选
     std::ostringstream where_clause;
     where_clause << "WHERE 1=1";
 
@@ -227,6 +240,7 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
         where_clause << " AND datetime >= '" << escape(q.date_from) << "'";
     }
     if (!q.date_to.empty()) {
+        // 含当天全天：上限拼到 23:59
         where_clause << " AND datetime <= '" << escape(q.date_to) << " 23:59'";
     }
     if (q.amount_min >= 0) {
@@ -236,7 +250,7 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
         where_clause << " AND amount <= " << q.amount_max;
     }
 
-    // 统计总数
+    // 先 COUNT 再 LIMIT/OFFSET，保证 total 与当前筛选一致
     std::string count_sql = "SELECT COUNT(*) FROM records " + where_clause.str();
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, count_sql.c_str(), -1, &stmt, nullptr);
@@ -245,7 +259,6 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
     }
     sqlite3_finalize(stmt);
 
-    // 分页查询
     std::string sort_col = (q.sort_by == "amount") ? "amount" : "datetime";
     std::string sort_dir = (q.sort_order == "asc") ? "ASC" : "DESC";
     int offset = (q.page - 1) * q.page_size;
@@ -378,7 +391,7 @@ bool Database::deleteRecord(int id) {
     return ok;
 }
 
-// ── 分类管理 ──────────────────────────────────────────────────────────
+// ── 分类查询与管理 ─────────────────────────────────────────────────
 
 std::vector<CategoryL1> Database::getCategories(const std::string& type) {
     std::vector<CategoryL1> result;
@@ -404,7 +417,7 @@ std::vector<CategoryL1> Database::getCategories(const std::string& type) {
         if (ic) cat.icon = ic;
         cat.sort_order = sqlite3_column_int(stmt, 4);
 
-        // 加载该一级分类下的二级分类
+        // N+1 查询：每个一级拉取其二级名称列表（分类数量小，可接受）
         sqlite3_stmt* stmt2 = nullptr;
         sqlite3_prepare_v2(db_, "SELECT name FROM category_l2 WHERE l1_id=? ORDER BY sort_order, id",
                            -1, &stmt2, nullptr);
