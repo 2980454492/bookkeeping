@@ -94,23 +94,89 @@ async function loadCategories() {
     }
 }
 
-// 将 categories 缓存中的数据填充到页面上的 <select> 下拉框
-// 调用时机：init() 启动时、用户切换「支出/收入」类型时
-function populateCategorySelects() {
-    // document.getElementById(id) 通过 HTML 元素的 id 属性找到 DOM 节点
-    // .value 读取 <select> 当前选中项的 value 属性
-    const fType = document.getElementById('fType').value;
-    const fCatL1 = document.getElementById('fCatL1');       // 新增表单：一级分类
+// 读取表单中当前选中的类型（单选按钮）
+function getFormType(prefix) {
+    const el = document.querySelector(`input[name="${prefix}Type"]:checked`);
+    return el ? el.value : 'expense';
+}
 
-    const cats = getCategoriesByType(fType);  // 仅取当前类型（支出/收入）的分类
+// 设置表单类型单选按钮
+function setFormType(prefix, type) {
+    const el = document.querySelector(`input[name="${prefix}Type"][value="${type}"]`);
+    if (el) el.checked = true;
+}
 
-    // innerHTML：直接替换元素的 HTML 内容（此处动态生成 <option> 列表）
-    fCatL1.innerHTML = '<option value="">请选择</option>';
-    for (const cat of cats) {
-        // 模板字符串 `...${变量}...` 用于拼接 HTML；escapeHtml 防止 XSS
-        fCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.icon || ''} ${cat.name}</option>`;
+// 渲染一级分类按钮网格；prefix 为 'f'（新增）或 'e'（编辑）
+function renderCatL1Picker(prefix, selectedL1 = '', selectedL2 = '') {
+    const type = getFormType(prefix);
+    const picker = document.getElementById(`${prefix}CatL1Picker`);
+    const hidden = document.getElementById(`${prefix}CatL1`);
+    const cats = getCategoriesByType(type);
+
+    hidden.value = selectedL1;
+    picker.innerHTML = cats.map(cat => {
+        const active = cat.name === selectedL1 ? ' active' : '';
+        return `<button type="button" class="cat-chip${active}" data-l1="${escapeHtml(cat.name)}">${cat.icon || ''} ${escapeHtml(cat.name)}</button>`;
+    }).join('');
+
+    updateCatL2Panel(prefix, selectedL1, selectedL2);
+}
+
+// 支出且已选一级分类时，在下方展示二级分类按钮；收入则隐藏
+function updateCatL2Panel(prefix, l1Name, selectedL2 = '') {
+    const type = getFormType(prefix);
+    const groupId = prefix === 'f' ? 'catL2Group' : 'eCatL2Group';
+    const group = document.getElementById(groupId);
+    const picker = document.getElementById(`${prefix}CatL2Picker`);
+    const hidden = document.getElementById(`${prefix}CatL2`);
+
+    if (type !== 'expense' || !l1Name) {
+        group.style.display = 'none';
+        hidden.value = '';
+        picker.innerHTML = '';
+        return;
     }
-    updateL2Select();  // 一级分类变更后同步更新二级分类
+
+    group.style.display = '';
+    const subs = getSubcategories(l1Name);
+    hidden.value = selectedL2;
+    picker.innerHTML = subs.map(sub => {
+        const active = sub === selectedL2 ? ' active' : '';
+        return `<button type="button" class="cat-chip${active}" data-l2="${escapeHtml(sub)}">${escapeHtml(sub)}</button>`;
+    }).join('');
+}
+
+// 切换类型时清空已选分类并重新渲染一级分类
+function onFormTypeChange(prefix) {
+    renderCatL1Picker(prefix, '', '');
+}
+
+// 绑定分类选择器点击事件（一级 / 二级 / 类型切换）
+function setupCategoryPicker(prefix) {
+    document.getElementById(`${prefix}CatL1Picker`).addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.cat-chip[data-l1]');
+        if (!btn) return;
+        const l1 = btn.dataset.l1;
+        document.getElementById(`${prefix}CatL1`).value = l1;
+        document.querySelectorAll(`#${prefix}CatL1Picker .cat-chip`).forEach(el => {
+            el.classList.toggle('active', el.dataset.l1 === l1);
+        });
+        updateCatL2Panel(prefix, l1, '');
+    });
+
+    document.getElementById(`${prefix}CatL2Picker`).addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.cat-chip[data-l2]');
+        if (!btn) return;
+        const l2 = btn.dataset.l2;
+        document.getElementById(`${prefix}CatL2`).value = l2;
+        document.querySelectorAll(`#${prefix}CatL2Picker .cat-chip`).forEach(el => {
+            el.classList.toggle('active', el.dataset.l2 === l2);
+        });
+    });
+
+    document.querySelectorAll(`input[name="${prefix}Type"]`).forEach(radio => {
+        radio.addEventListener('change', () => onFormTypeChange(prefix));
+    });
 }
 
 // 填充筛选栏的一级分类下拉框（显示所有类型，不过滤 expense/income）
@@ -120,30 +186,6 @@ function populateFilterCategorySelect() {
     filterCatL1.innerHTML = '<option value="">全部分类</option>';
     for (const cat of [...categories.expense, ...categories.income]) {
         filterCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
-    }
-}
-
-// 根据当前选中的一级分类，填充/隐藏二级分类下拉框
-function updateL2Select() {
-    const fCatL1 = document.getElementById('fCatL1');
-    const catL2Group = document.getElementById('catL2Group'); // 二级分类整行容器
-    const fCatL2 = document.getElementById('fCatL2');
-    const fType = document.getElementById('fType').value;
-
-    // 收入类型无二级分类，隐藏该行
-    if (fType === 'income') {
-        catL2Group.style.display = 'none';  // CSS display 属性控制可见性
-        fCatL2.innerHTML = '<option value="">—</option>';
-        return;
-    }
-
-    catL2Group.style.display = '';
-    const l1Name = fCatL1.value;                    // 当前选中的一级分类名
-    const subs = getSubcategories(l1Name);          // 从缓存查找二级分类
-
-    fCatL2.innerHTML = '<option value="">请选择</option>';
-    for (const sub of subs) {
-        fCatL2.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
     }
 }
 
@@ -264,12 +306,32 @@ async function updateSummary() {
 
 // ── 新增记录 ────────────────────────────────────────────────────────
 
+// 打开新增记录弹窗：重置表单为默认值（类型=支出、时间=当前）后显示
+function openAddModal() {
+    setFormType('f', 'expense');
+    document.getElementById('fAmount').value = '';
+    document.getElementById('fNote').value = '';
+
+    // 时间默认填当前本地时间，格式 "YYYY-MM-DDTHH:MM"
+    const now = new Date();
+    document.getElementById('fDatetime').value =
+        new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+    renderCatL1Picker('f', '', '');
+    document.getElementById('addModal').style.display = 'flex';
+}
+
+// 关闭新增记录弹窗
+function closeAddModal() {
+    document.getElementById('addModal').style.display = 'none';
+}
+
 // 表单提交回调：由 addForm 的 'submit' 事件触发（见 init() 中的 addEventListener）
 async function addRecord(e) {
     e.preventDefault();  // 阻止表单默认行为（否则会整页刷新并 POST 到当前 URL）
 
-    // 从各表单控件读取用户输入（id 对应 index.html 中的元素）
-    const type = document.getElementById('fType').value;
+    // 从各表单控件读取用户输入
+    const type = getFormType('f');
     const amount = parseFloat(document.getElementById('fAmount').value);
     const datetime = document.getElementById('fDatetime').value;
     const catL1 = document.getElementById('fCatL1').value;
@@ -303,13 +365,7 @@ async function addRecord(e) {
             category_l2: type === 'income' ? '' : catL2,
             note: note
         });
-        // 提交成功后清空表单
-        document.getElementById('fAmount').value = '';
-        document.getElementById('fNote').value = '';
-        document.getElementById('fDatetime').value = '';
-        document.getElementById('fCatL1').value = '';
-        document.getElementById('fCatL2').value = '';
-        updateL2Select();
+        closeAddModal();      // 提交成功后关闭弹窗
         await loadRecords();  // 重新拉取列表，刷新表格
     } catch (e) {
         alert('添加失败: ' + e.message);
@@ -332,40 +388,6 @@ async function deleteRecord(id) {
 
 // ── 编辑记录 ────────────────────────────────────────────────────────
 
-// 根据编辑弹窗当前选中的类型，填充其一级分类下拉框
-function populateEditCategorySelects() {
-    const eType = document.getElementById('eType').value;
-    const eCatL1 = document.getElementById('eCatL1');
-    const cats = getCategoriesByType(eType);
-
-    eCatL1.innerHTML = '<option value="">请选择</option>';
-    for (const cat of cats) {
-        eCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.icon || ''} ${cat.name}</option>`;
-    }
-    updateEditL2Select();
-}
-
-// 根据编辑弹窗当前选中的一级分类，填充/隐藏二级分类下拉框
-function updateEditL2Select() {
-    const eCatL1 = document.getElementById('eCatL1');
-    const eCatL2Group = document.getElementById('eCatL2Group');
-    const eCatL2 = document.getElementById('eCatL2');
-    const eType = document.getElementById('eType').value;
-
-    if (eType === 'income') {
-        eCatL2Group.style.display = 'none';
-        eCatL2.innerHTML = '<option value="">—</option>';
-        return;
-    }
-
-    eCatL2Group.style.display = '';
-    const subs = getSubcategories(eCatL1.value);
-    eCatL2.innerHTML = '<option value="">请选择</option>';
-    for (const sub of subs) {
-        eCatL2.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
-    }
-}
-
 // 由表格中编辑按钮的 onclick="openEditModal(id)" 调用
 // 从当前页缓存中找到记录，回填表单后弹出弹窗
 function openEditModal(id) {
@@ -376,7 +398,7 @@ function openEditModal(id) {
     }
 
     document.getElementById('eId').value = record.id;
-    document.getElementById('eType').value = record.type;
+    setFormType('e', record.type);
     document.getElementById('eAmount').value = record.amount;
 
     // 后端格式 "YYYY-MM-DD HH:MM(:SS)" → datetime-local 需要 "YYYY-MM-DDTHH:MM"
@@ -385,11 +407,7 @@ function openEditModal(id) {
 
     document.getElementById('eNote').value = record.note || '';
 
-    // 先按类型填充一级分类，再回填选中的分类值
-    populateEditCategorySelects();
-    document.getElementById('eCatL1').value = record.category_l1 || '';
-    updateEditL2Select();
-    document.getElementById('eCatL2').value = record.category_l2 || '';
+    renderCatL1Picker('e', record.category_l1 || '', record.category_l2 || '');
 
     document.getElementById('editModal').style.display = 'flex';
 }
@@ -404,7 +422,7 @@ async function submitEdit(e) {
     e.preventDefault();
 
     const id = parseInt(document.getElementById('eId').value, 10);
-    const type = document.getElementById('eType').value;
+    const type = getFormType('e');
     const amount = parseFloat(document.getElementById('eAmount').value);
     const datetime = document.getElementById('eDatetime').value;
     const catL1 = document.getElementById('eCatL1').value;
@@ -506,30 +524,31 @@ function resetFilters() {
 
 // 页面加载完成后执行一次：拉数据 → 渲染 → 绑定事件
 async function init() {
-    // 将「时间」输入框默认值设为当前本地时间
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-        .toISOString().slice(0, 16);  // 格式 "YYYY-MM-DDTHH:MM"
-    document.getElementById('fDatetime').value = local;
-
     await loadCategories();          // 1. 拉分类 → 写入 categories 缓存
-    populateCategorySelects();       // 2. 填充新增表单下拉框
-    populateFilterCategorySelect();  // 3. 填充筛选栏一级分类下拉框
-    await loadRecords();             // 4. 拉记录 → 渲染表格和汇总
+    populateFilterCategorySelect();  // 2. 填充筛选栏一级分类下拉框
+    await loadRecords();             // 3. 拉记录 → 渲染表格和汇总
+
+    // 分类选择器事件（新增 / 编辑弹窗各一套）
+    setupCategoryPicker('f');
+    setupCategoryPicker('e');
 
     // ── 事件绑定（用户操作 → 回调函数） ─────────────────────────────
     // addEventListener(事件名, 回调函数)：注册事件监听，类似 C++ 信号/槽
 
+    // 「添加记录」按钮 → 打开新增弹窗
+    document.getElementById('btnOpenAdd').addEventListener('click', openAddModal);
+
     // 表单提交 → 新增记录
     document.getElementById('addForm').addEventListener('submit', addRecord);
 
-    // 切换「支出/收入」→ 重新填充一级分类（选项不同）
-    document.getElementById('fType').addEventListener('change', () => {
-        populateCategorySelects();
-    });
+    // 关闭按钮 / 取消按钮 → 关闭新增弹窗
+    document.getElementById('addClose').addEventListener('click', closeAddModal);
+    document.getElementById('addCancel').addEventListener('click', closeAddModal);
 
-    // 切换一级分类 → 更新二级分类选项
-    document.getElementById('fCatL1').addEventListener('change', updateL2Select);
+    // 点击遮罩层（非内容区域）→ 关闭新增弹窗
+    document.getElementById('addModal').addEventListener('click', (ev) => {
+        if (ev.target.id === 'addModal') closeAddModal();
+    });
 
     // 下拉类筛选：变化即重置到第 1 页并重新加载
     ['filterType', 'filterCatL2', 'filterSortBy', 'filterSortOrder'].forEach(id => {
@@ -573,12 +592,6 @@ async function init() {
     // ── 编辑弹窗事件绑定 ──────────────────────────────────────────
     // 编辑表单提交 → 保存修改
     document.getElementById('editForm').addEventListener('submit', submitEdit);
-
-    // 弹窗内切换「支出/收入」→ 重新填充一级分类
-    document.getElementById('eType').addEventListener('change', populateEditCategorySelects);
-
-    // 弹窗内切换一级分类 → 更新二级分类选项
-    document.getElementById('eCatL1').addEventListener('change', updateEditL2Select);
 
     // 关闭按钮 / 取消按钮 → 关闭弹窗
     document.getElementById('editClose').addEventListener('click', closeEditModal);

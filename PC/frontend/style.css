@@ -97,6 +97,90 @@ body {
     box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
 }
 
+/* 表单字段块（类型 / 分类选择器等） */
+.form-field { margin-bottom: 14px; }
+.field-label {
+    display: block;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+/* 类型单选：隐藏原生 radio，两个按钮各占半行占满整行 */
+.type-radio-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+.type-radio {
+    flex: 1;
+    cursor: pointer;
+}
+.type-radio input { position: absolute; opacity: 0; pointer-events: none; }
+.type-radio-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 10px 12px;
+    border: 2px solid #d9d9d9;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.15s;
+}
+.type-radio input:checked + .type-radio-btn.type-expense {
+    border-color: #ff4d4f;
+    background: #fff2f0;
+    color: #ff4d4f;
+}
+.type-radio input:checked + .type-radio-btn.type-income {
+    border-color: #52c41a;
+    background: #f6ffed;
+    color: #52c41a;
+}
+
+/* 分类选择器：二级分类自由换行；一级分类见下方 grid 规则 */
+.cat-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.cat-picker-sub { margin-top: 2px; }
+/* 一级分类固定每行 3 个 */
+.cat-picker:not(.cat-picker-sub) {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+}
+.cat-chip {
+    padding: 8px 10px;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    background: #fafafa;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1.4;
+    text-align: center;
+}
+.cat-picker:not(.cat-picker-sub) .cat-chip {
+    width: 100%;
+}
+.cat-chip:hover {
+    border-color: #1677ff;
+    color: #1677ff;
+}
+.cat-chip.active {
+    border-color: #1677ff;
+    background: #e6f4ff;
+    color: #1677ff;
+    font-weight: 500;
+}
+.cat-picker-sub .cat-chip {
+    font-size: 12px;
+    padding: 5px 12px;
+}
+
 /* ── 按钮 ────────────────────────────────────────────── */
 .btn {
     padding: 8px 20px;
@@ -237,7 +321,9 @@ tbody tr:hover { background: #f5f9ff; }
     background: #fff;
     border-radius: 10px;
     width: 100%;
-    max-width: 640px;
+    max-width: 680px;
+    max-height: 90vh;
+    overflow-y: auto;
     padding: 20px 24px 24px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
     animation: modal-in 0.18s ease-out;

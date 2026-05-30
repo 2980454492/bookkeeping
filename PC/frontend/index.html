@@ -30,47 +30,9 @@
             </div>
         </div>
 
-        <!-- 新增记录表单 -->
-        <div class="section">
-            <h2>新增记录</h2>
-            <form id="addForm" class="add-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="fType">类型 *</label>
-                        <select id="fType" required>
-                            <option value="expense">支出</option>
-                            <option value="income">收入</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="fAmount">金额 *</label>
-                        <input type="number" id="fAmount" placeholder="0.00" step="0.01" min="0.01" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="fDatetime">时间 *</label>
-                        <input type="datetime-local" id="fDatetime" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="fCatL1">一级分类 *</label>
-                        <select id="fCatL1" required>
-                            <option value="">请选择</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="catL2Group">
-                        <label for="fCatL2">二级分类</label>
-                        <select id="fCatL2">
-                            <option value="">请选择</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="fNote">备注</label>
-                        <input type="text" id="fNote" placeholder="可选" maxlength="200">
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary">➕ 添加记录</button>
-            </form>
+        <!-- 新增记录入口：点击打开弹窗 -->
+        <div class="section add-entry">
+            <button type="button" class="btn btn-primary" id="btnOpenAdd">➕ 添加记录</button>
         </div>
 
         <!-- 筛选与记录列表 -->
@@ -180,6 +142,59 @@
             </div>
         </div>
 
+        <!-- 新增记录弹窗（默认隐藏，点击「添加记录」按钮时弹出） -->
+        <div id="addModal" class="modal-overlay" style="display:none;">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>新增记录</h2>
+                    <button type="button" class="modal-close" id="addClose">&times;</button>
+                </div>
+                <form id="addForm" class="add-form">
+                    <div class="form-field">
+                        <span class="field-label">类型 *</span>
+                        <div class="type-radio-group">
+                            <label class="type-radio">
+                                <input type="radio" name="fType" value="expense" checked>
+                                <span class="type-radio-btn type-expense">支出</span>
+                            </label>
+                            <label class="type-radio">
+                                <input type="radio" name="fType" value="income">
+                                <span class="type-radio-btn type-income">收入</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-field">
+                        <span class="field-label">一级分类 *</span>
+                        <div id="fCatL1Picker" class="cat-picker"></div>
+                        <input type="hidden" id="fCatL1" value="">
+                    </div>
+                    <div class="form-field" id="catL2Group" style="display:none;">
+                        <span class="field-label">二级分类 *</span>
+                        <div id="fCatL2Picker" class="cat-picker cat-picker-sub"></div>
+                        <input type="hidden" id="fCatL2" value="">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="fAmount">金额 *</label>
+                            <input type="number" id="fAmount" placeholder="0.00" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="fDatetime">时间 *</label>
+                            <input type="datetime-local" id="fDatetime" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="fNote">备注</label>
+                            <input type="text" id="fNote" placeholder="可选" maxlength="200">
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-sm" id="addCancel">取消</button>
+                        <button type="submit" class="btn btn-primary">✓ 确认</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <!-- 编辑记录弹窗（默认隐藏，点击列表「编辑」按钮时弹出） -->
         <div id="editModal" class="modal-overlay" style="display:none;">
             <div class="modal">
@@ -189,14 +204,30 @@
                 </div>
                 <form id="editForm" class="add-form">
                     <input type="hidden" id="eId">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="eType">类型 *</label>
-                            <select id="eType" required>
-                                <option value="expense">支出</option>
-                                <option value="income">收入</option>
-                            </select>
+                    <div class="form-field">
+                        <span class="field-label">类型 *</span>
+                        <div class="type-radio-group">
+                            <label class="type-radio">
+                                <input type="radio" name="eType" value="expense" checked>
+                                <span class="type-radio-btn type-expense">支出</span>
+                            </label>
+                            <label class="type-radio">
+                                <input type="radio" name="eType" value="income">
+                                <span class="type-radio-btn type-income">收入</span>
+                            </label>
                         </div>
+                    </div>
+                    <div class="form-field">
+                        <span class="field-label">一级分类 *</span>
+                        <div id="eCatL1Picker" class="cat-picker"></div>
+                        <input type="hidden" id="eCatL1" value="">
+                    </div>
+                    <div class="form-field" id="eCatL2Group" style="display:none;">
+                        <span class="field-label">二级分类 *</span>
+                        <div id="eCatL2Picker" class="cat-picker cat-picker-sub"></div>
+                        <input type="hidden" id="eCatL2" value="">
+                    </div>
+                    <div class="form-row">
                         <div class="form-group">
                             <label for="eAmount">金额 *</label>
                             <input type="number" id="eAmount" placeholder="0.00" step="0.01" min="0.01" required>
@@ -204,20 +235,6 @@
                         <div class="form-group">
                             <label for="eDatetime">时间 *</label>
                             <input type="datetime-local" id="eDatetime" required>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="eCatL1">一级分类 *</label>
-                            <select id="eCatL1" required>
-                                <option value="">请选择</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="eCatL2Group">
-                            <label for="eCatL2">二级分类</label>
-                            <select id="eCatL2">
-                                <option value="">请选择</option>
-                            </select>
                         </div>
                         <div class="form-group">
                             <label for="eNote">备注</label>
