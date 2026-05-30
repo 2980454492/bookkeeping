@@ -187,12 +187,38 @@ void registerRoutes(httplib::Server& svr, Database& db) {
     svr.Put(R"(/api/records/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
+
+            // 先确认记录存在，避免 updateRecord 对不存在 id 也返回成功而误报
+            if (!db.getRecord(id)) {
+                res.status = 404;
+                res.set_content(errorJson("记录未找到").dump(), "application/json");
+                return;
+            }
+
             auto j = json::parse(req.body);
             Record r = jsonToRecord(j);
 
+            // 与 POST 保持一致的字段校验
+            if (r.datetime.empty() || r.type.empty() || r.category_l1.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("缺少必填字段: datetime, type, category_l1").dump(),
+                                "application/json");
+                return;
+            }
+            if (r.type != "income" && r.type != "expense") {
+                res.status = 400;
+                res.set_content(errorJson("type 字段必须是 'income' 或 'expense'").dump(), "application/json");
+                return;
+            }
+            if (r.amount <= 0) {
+                res.status = 400;
+                res.set_content(errorJson("金额必须大于 0").dump(), "application/json");
+                return;
+            }
+
             if (!db.updateRecord(id, r)) {
-                res.status = 404;
-                res.set_content(errorJson("记录未找到或更新失败").dump(), "application/json");
+                res.status = 500;
+                res.set_content(errorJson("更新记录失败").dump(), "application/json");
                 return;
             }
 
