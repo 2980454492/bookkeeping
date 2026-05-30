@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/bookkeeping.dir/src/main.cpp.o CMakeFiles/bookkeeping.dir/src/db.cpp.o CMakeFiles/bookkeeping.dir/src/handlers.cpp.o -o bookkeeping  /usr/lib/x86_64-linux-gnu/libsqlite3.so 
