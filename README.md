@@ -78,7 +78,7 @@ sudo apt update && sudo apt install -y build-essential cmake libsqlite3-dev
 
 ```bash
 # 1. 克隆项目
-git clone <repo-url> && cd bookkeeping
+git clone https://github.com/2980454492/bookkeeping.git && cd bookkeeping
 
 # 2. 下载第三方头文件依赖（仅首次需要）
 mkdir -p PC/libs
@@ -86,7 +86,9 @@ curl -L "https://cdn.jsdelivr.net/gh/yhirose/cpp-httplib@v0.16.3/httplib.h" -o P
 curl -L "https://cdn.jsdelivr.net/gh/nlohmann/json@v3.11.3/single_include/nlohmann/json.hpp" -o PC/libs/json.hpp
 
 # 3. 一键运行（构建 + 启动 + 打开浏览器）
-cd PC && ./run.sh
+cd PC 
+chmod +x run.sh
+./run.sh
 ```
 
 浏览器自动打开 `http://127.0.0.1:18080`，即可看到记账界面。
