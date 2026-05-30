@@ -1,10 +1,10 @@
-// ── State ────────────────────────────────────────────────────────────
+// ── 全局状态 ────────────────────────────────────────────────────────
 let categories = { expense: [], income: [] };
 let currentRecords = [];
 let currentPage = 1;
 const PAGE_SIZE = 50;
 
-// ── API helpers ──────────────────────────────────────────────────────
+// ── API 请求封装 ────────────────────────────────────────────────────
 const API = {
     async get(url) {
         const res = await fetch(url);
@@ -27,7 +27,7 @@ const API = {
     }
 };
 
-// ── Category helpers ─────────────────────────────────────────────────
+// ── 分类工具函数 ────────────────────────────────────────────────────
 
 function getCategoriesByType(type) {
     return categories[type] || [];
@@ -39,7 +39,7 @@ function getSubcategories(l1Name) {
     return found ? (found.subcategories || []) : [];
 }
 
-// ── Load categories ──────────────────────────────────────────────────
+// ── 加载分类 ──────────────────────────────────────────────────────────
 
 async function loadCategories() {
     try {
@@ -50,9 +50,9 @@ async function loadCategories() {
             if (cat.type === 'expense') categories.expense.push(cat);
             else categories.income.push(cat);
         }
-        console.log('[App] Categories loaded:', categories.expense.length + categories.income.length);
+        console.log('[App] 分类已加载:', categories.expense.length + categories.income.length);
     } catch (e) {
-        console.error('[App] Failed to load categories:', e);
+        console.error('[App] 加载分类失败:', e);
     }
 }
 
@@ -63,14 +63,14 @@ function populateCategorySelects() {
 
     const cats = getCategoriesByType(fType);
 
-    // Add form L1 select
+    // 填充表单中的一级分类下拉框
     fCatL1.innerHTML = '<option value="">请选择</option>';
     for (const cat of cats) {
         fCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.icon || ''} ${cat.name}</option>`;
     }
     updateL2Select();
 
-    // Filter L1 select
+    // 填充筛选栏中的一级分类下拉框
     filterCatL1.innerHTML = '<option value="">全部分类</option>';
     for (const cat of [...categories.expense, ...categories.income]) {
         filterCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
@@ -83,7 +83,7 @@ function updateL2Select() {
     const fCatL2 = document.getElementById('fCatL2');
     const fType = document.getElementById('fType').value;
 
-    // Income has no L2 categories
+    // 收入类型没有二级分类，隐藏
     if (fType === 'income') {
         catL2Group.style.display = 'none';
         fCatL2.innerHTML = '<option value="">—</option>';
@@ -100,7 +100,7 @@ function updateL2Select() {
     }
 }
 
-// ── Load records ─────────────────────────────────────────────────────
+// ── 加载记录 ─────────────────────────────────────────────────────────
 
 async function loadRecords() {
     const params = new URLSearchParams();
@@ -122,11 +122,11 @@ async function loadRecords() {
         renderRecords();
         updateSummary();
     } catch (e) {
-        console.error('[App] Failed to load records:', e);
+        console.error('[App] 加载记录失败:', e);
     }
 }
 
-// ── Render records table ─────────────────────────────────────────────
+// ── 渲染记录表格 ─────────────────────────────────────────────────────
 
 function renderRecords() {
     const tbody = document.getElementById('recordBody');
@@ -153,13 +153,13 @@ function renderRecords() {
     }).join('');
 }
 
-// ── Summary ──────────────────────────────────────────────────────────
+// ── 汇总统计 ──────────────────────────────────────────────────────────
 
 async function updateSummary() {
     try {
-        // Simple summary: calculate from all records
+        // 从全部记录中计算汇总数据
         let totalIncome = 0, totalExpense = 0;
-        // Fetch all records for summary (without pagination filter)
+        // 拉取所有记录用于汇总（不经过分页筛选）
         const allData = await API.get('/api/records?page=1&page_size=10000');
         for (const r of (allData.records || [])) {
             if (r.type === 'income') totalIncome += r.amount;
@@ -172,11 +172,11 @@ async function updateSummary() {
         balEl.textContent = `${balance >= 0 ? '+' : ''}¥${balance.toFixed(2)}`;
         balEl.style.color = balance >= 0 ? '#52c41a' : '#ff4d4f';
     } catch (e) {
-        console.error('[App] Failed to update summary:', e);
+        console.error('[App] 更新汇总失败:', e);
     }
 }
 
-// ── Add record ───────────────────────────────────────────────────────
+// ── 新增记录 ─────────────────────────────────────────────────────────
 
 async function addRecord(e) {
     e.preventDefault();
@@ -200,7 +200,7 @@ async function addRecord(e) {
         return;
     }
 
-    // Convert datetime-local format "YYYY-MM-DDTHH:MM" to "YYYY-MM-DD HH:MM"
+    // 将 datetime-local 格式 "YYYY-MM-DDTHH:MM" 转换为 "YYYY-MM-DD HH:MM"
     const formatted = datetime.replace('T', ' ') + ':00';
 
     try {
@@ -212,7 +212,7 @@ async function addRecord(e) {
             category_l2: type === 'income' ? '' : catL2,
             note: note
         });
-        // Reset form
+        // 重置表单
         document.getElementById('fAmount').value = '';
         document.getElementById('fNote').value = '';
         document.getElementById('fDatetime').value = '';
@@ -225,7 +225,7 @@ async function addRecord(e) {
     }
 }
 
-// ── Delete record ────────────────────────────────────────────────────
+// ── 删除记录 ─────────────────────────────────────────────────────────
 
 async function deleteRecord(id) {
     if (!confirm('确认删除这条记录？')) return;
@@ -237,7 +237,7 @@ async function deleteRecord(id) {
     }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── 工具函数 ──────────────────────────────────────────────────────────
 
 function escapeHtml(str) {
     const div = document.createElement('div');
@@ -245,10 +245,10 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-// ── Initialize ───────────────────────────────────────────────────────
+// ── 初始化 ───────────────────────────────────────────────────────────
 
 async function init() {
-    // Set default datetime to now
+    // 将默认时间设为当前时间
     const now = new Date();
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
         .toISOString().slice(0, 16);
@@ -258,7 +258,7 @@ async function init() {
     populateCategorySelects();
     await loadRecords();
 
-    // Event listeners
+    // 绑定事件监听
     document.getElementById('addForm').addEventListener('submit', addRecord);
     document.getElementById('fType').addEventListener('change', () => {
         populateCategorySelects();

@@ -8,7 +8,7 @@
 
 using json = nlohmann::json;
 
-// ── Helper: simple string escaping for SQL ─────────────────────────
+// ── 工具函数：SQL 字符串转义 ─────────────────────────────────────────
 
 std::string Database::escape(const std::string& s) const {
     std::string out;
@@ -24,24 +24,24 @@ void Database::executeSql(const std::string& sql) {
     char* err = nullptr;
     int rc = sqlite3_exec(db_, sql.c_str(), nullptr, nullptr, &err);
     if (rc != SQLITE_OK) {
-        std::string msg = err ? err : "unknown error";
+        std::string msg = err ? err : "未知错误";
         sqlite3_free(err);
-        throw std::runtime_error("SQL error: " + msg + "\nSQL: " + sql);
+        throw std::runtime_error("SQL 错误: " + msg + "\nSQL: " + sql);
     }
 }
 
-// ── Open / Close ───────────────────────────────────────────────────
+// ── 打开 / 关闭数据库 ────────────────────────────────────────────────
 
 bool Database::open(const std::string& db_path) {
     int rc = sqlite3_open(db_path.c_str(), &db_);
     if (rc != SQLITE_OK) {
-        std::cerr << "[DB] Cannot open database: " << sqlite3_errmsg(db_) << std::endl;
+        std::cerr << "[DB] 无法打开数据库: " << sqlite3_errmsg(db_) << std::endl;
         return false;
     }
-    // Enable WAL mode for better concurrent read performance
+    // 启用 WAL 模式提升并发读取性能
     executeSql("PRAGMA journal_mode=WAL");
     executeSql("PRAGMA foreign_keys=ON");
-    std::cout << "[DB] Database opened: " << db_path << std::endl;
+    std::cout << "[DB] 数据库已打开: " << db_path << std::endl;
     return true;
 }
 
@@ -49,7 +49,7 @@ void Database::close() {
     if (db_) {
         sqlite3_close(db_);
         db_ = nullptr;
-        std::cout << "[DB] Database closed." << std::endl;
+        std::cout << "[DB] 数据库已关闭。" << std::endl;
     }
 }
 
@@ -57,7 +57,7 @@ Database::~Database() {
     close();
 }
 
-// ── Table creation ─────────────────────────────────────────────────
+// ── 建表 ──────────────────────────────────────────────────────────────
 
 void Database::createTables() {
     executeSql(R"(
@@ -95,47 +95,47 @@ void Database::createTables() {
         )
     )");
 
-    // Indices
+    // 创建索引加速查询
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_datetime ON records(datetime)");
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_type ON records(type)");
     executeSql("CREATE INDEX IF NOT EXISTS idx_records_cat1 ON records(category_l1)");
 
-    std::cout << "[DB] Tables created / verified." << std::endl;
+    std::cout << "[DB] 数据表已创建 / 已验证。" << std::endl;
 }
 
-// ── Category import from JSON ──────────────────────────────────────
+// ── 从 JSON 导入默认分类 ─────────────────────────────────────────────
 
 bool Database::importCategoriesFromJson(const std::string& json_path) {
     std::ifstream f(json_path);
     if (!f.is_open()) {
-        std::cerr << "[DB] Cannot open categories JSON: " << json_path << std::endl;
+        std::cerr << "[DB] 无法打开分类模板文件: " << json_path << std::endl;
         return false;
     }
     json j;
     try {
         f >> j;
     } catch (const std::exception& e) {
-        std::cerr << "[DB] JSON parse error: " << e.what() << std::endl;
+        std::cerr << "[DB] JSON 解析错误: " << e.what() << std::endl;
         return false;
     }
 
     int sort = 0;
 
-    // Import expense categories
+    // 导入支出分类
     if (j.contains("expense") && j["expense"].is_array()) {
         for (const auto& cat : j["expense"]) {
             std::string name = cat.value("name", "");
             std::string icon = cat.value("icon", "");
             if (name.empty()) continue;
 
-            // Insert L1
+            // 插入一级分类
             std::string sql = "INSERT INTO category_l1 (name, type, icon, sort_order) VALUES ('"
                             + escape(name) + "', 'expense', '" + escape(icon) + "', " + std::to_string(sort++) + ")";
             executeSql(sql);
 
             int l1_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
 
-            // Insert L2
+            // 插入二级分类
             if (cat.contains("subcategories") && cat["subcategories"].is_array()) {
                 int l2_sort = 0;
                 for (const auto& sub : cat["subcategories"]) {
@@ -149,7 +149,7 @@ bool Database::importCategoriesFromJson(const std::string& json_path) {
         }
     }
 
-    // Import income categories (no subcategories)
+    // 导入收入分类（无二级分类）
     sort = 0;
     if (j.contains("income") && j["income"].is_array()) {
         for (const auto& cat : j["income"]) {
@@ -163,7 +163,7 @@ bool Database::importCategoriesFromJson(const std::string& json_path) {
         }
     }
 
-    std::cout << "[DB] Categories imported from " << json_path << std::endl;
+    std::cout << "[DB] 分类已从 " << json_path << " 导入" << std::endl;
     return true;
 }
 
@@ -173,12 +173,12 @@ bool Database::resetCategories(const std::string& json_path) {
     return importCategoriesFromJson(json_path);
 }
 
-// ── Initialize ─────────────────────────────────────────────────────
+// ── 初始化 ────────────────────────────────────────────────────────────
 
 bool Database::initialize(const std::string& categories_json_path) {
     createTables();
 
-    // Check if categories table is empty
+    // 检查分类表是否为空
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, "SELECT COUNT(*) FROM category_l1", -1, &stmt, nullptr);
     int count = 0;
@@ -190,14 +190,14 @@ bool Database::initialize(const std::string& categories_json_path) {
     }
 
     if (count == 0) {
-        std::cout << "[DB] Empty categories, importing defaults..." << std::endl;
+        std::cout << "[DB] 分类表为空，正在导入默认分类..." << std::endl;
         return importCategoriesFromJson(categories_json_path);
     }
-    std::cout << "[DB] Categories already exist (" << count << " rows)." << std::endl;
+    std::cout << "[DB] 分类已存在（" << count << " 条记录）。" << std::endl;
     return true;
 }
 
-// ── Records CRUD ───────────────────────────────────────────────────
+// ── 记录 CRUD ─────────────────────────────────────────────────────────
 
 RecordListResult Database::queryRecords(const RecordQuery& q) {
     RecordListResult result;
@@ -236,7 +236,7 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
         where_clause << " AND amount <= " << q.amount_max;
     }
 
-    // Count total
+    // 统计总数
     std::string count_sql = "SELECT COUNT(*) FROM records " + where_clause.str();
     sqlite3_stmt* stmt = nullptr;
     sqlite3_prepare_v2(db_, count_sql.c_str(), -1, &stmt, nullptr);
@@ -245,7 +245,7 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
     }
     sqlite3_finalize(stmt);
 
-    // Query with pagination
+    // 分页查询
     std::string sort_col = (q.sort_by == "amount") ? "amount" : "datetime";
     std::string sort_dir = (q.sort_order == "asc") ? "ASC" : "DESC";
     int offset = (q.page - 1) * q.page_size;
@@ -258,7 +258,7 @@ RecordListResult Database::queryRecords(const RecordQuery& q) {
 
     sqlite3_prepare_v2(db_, query_sql.str().c_str(), -1, &stmt, nullptr);
     if (!stmt) {
-        std::cerr << "[DB] Query error: " << sqlite3_errmsg(db_) << std::endl;
+        std::cerr << "[DB] 查询错误: " << sqlite3_errmsg(db_) << std::endl;
         return result;
     }
 
@@ -335,13 +335,13 @@ int Database::createRecord(const Record& r) {
     sqlite3_bind_text(stmt, 6, r.note.c_str(), -1, SQLITE_TRANSIENT);
 
     if (sqlite3_step(stmt) != SQLITE_DONE) {
-        std::cerr << "[DB] Insert error: " << sqlite3_errmsg(db_) << std::endl;
+        std::cerr << "[DB] 插入错误: " << sqlite3_errmsg(db_) << std::endl;
         sqlite3_finalize(stmt);
         return -1;
     }
     sqlite3_finalize(stmt);
     int new_id = static_cast<int>(sqlite3_last_insert_rowid(db_));
-    std::cout << "[DB] Record created, id=" << new_id << std::endl;
+    std::cout << "[DB] 记录已创建, id=" << new_id << std::endl;
     return new_id;
 }
 
@@ -361,7 +361,7 @@ bool Database::updateRecord(int id, const Record& r) {
     sqlite3_bind_int(stmt, 7, id);
 
     bool ok = sqlite3_step(stmt) == SQLITE_DONE;
-    if (!ok) std::cerr << "[DB] Update error: " << sqlite3_errmsg(db_) << std::endl;
+    if (!ok) std::cerr << "[DB] 更新错误: " << sqlite3_errmsg(db_) << std::endl;
     sqlite3_finalize(stmt);
     return ok;
 }
@@ -374,11 +374,11 @@ bool Database::deleteRecord(int id) {
     sqlite3_bind_int(stmt, 1, id);
     bool ok = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);
-    if (ok) std::cout << "[DB] Record " << id << " deleted." << std::endl;
+    if (ok) std::cout << "[DB] 记录 " << id << " 已删除。" << std::endl;
     return ok;
 }
 
-// ── Categories ──────────────────────────────────────────────────────
+// ── 分类管理 ──────────────────────────────────────────────────────────
 
 std::vector<CategoryL1> Database::getCategories(const std::string& type) {
     std::vector<CategoryL1> result;
@@ -404,7 +404,7 @@ std::vector<CategoryL1> Database::getCategories(const std::string& type) {
         if (ic) cat.icon = ic;
         cat.sort_order = sqlite3_column_int(stmt, 4);
 
-        // Load subcategories
+        // 加载该一级分类下的二级分类
         sqlite3_stmt* stmt2 = nullptr;
         sqlite3_prepare_v2(db_, "SELECT name FROM category_l2 WHERE l1_id=? ORDER BY sort_order, id",
                            -1, &stmt2, nullptr);

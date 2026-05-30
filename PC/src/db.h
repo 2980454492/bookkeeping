@@ -6,16 +6,16 @@
 #include <optional>
 #include <memory>
 
-// ── Data structures ──────────────────────────────────────────────────
+// ── 数据结构 ──────────────────────────────────────────────────────────
 
 struct Record {
     int id = 0;
-    std::string datetime;   // "YYYY-MM-DD HH:MM"
-    std::string type;       // "income" or "expense"
+    std::string datetime;    // "YYYY-MM-DD HH:MM"
+    std::string type;        // "income"（收入）或 "expense"（支出）
     double amount = 0.0;
-    std::string category_l1;
-    std::string category_l2; // empty for income
-    std::string note;
+    std::string category_l1; // 一级分类名称
+    std::string category_l2; // 二级分类名称
+    std::string note;        // 备注
     std::string created_at;
     std::string updated_at;
 };
@@ -45,10 +45,10 @@ struct RecordListResult {
 struct CategoryL1 {
     int id = 0;
     std::string name;
-    std::string type;       // "income" or "expense"
+    std::string type;       // "income"（收入）或 "expense"（支出）
     std::string icon;
     int sort_order = 0;
-    std::vector<std::string> subcategories; // for output only
+    std::vector<std::string> subcategories; // 仅输出时使用，存放二级分类名称列表
 };
 
 struct CategoryL2 {
@@ -58,28 +58,28 @@ struct CategoryL2 {
     int sort_order = 0;
 };
 
-// ── Database class ───────────────────────────────────────────────────
+// ── 数据库操作类 ──────────────────────────────────────────────────────
 
 class Database {
 public:
     Database() = default;
     ~Database();
 
-    // Open / close
+    // 打开 / 关闭数据库
     bool open(const std::string& db_path);
     void close();
 
-    // Initialize tables and import default categories from JSON
+    // 建表并从 JSON 文件导入默认分类
     bool initialize(const std::string& categories_json_path);
 
-    // ── Records CRUD ─────────────────────────────────────────
+    // ── 记录 CRUD ─────────────────────────────────────────────
     RecordListResult queryRecords(const RecordQuery& q);
     std::optional<Record> getRecord(int id);
     int createRecord(const Record& r);
     bool updateRecord(int id, const Record& r);
     bool deleteRecord(int id);
 
-    // ── Categories ───────────────────────────────────────────
+    // ── 分类管理 ──────────────────────────────────────────────
     std::vector<CategoryL1> getCategories(const std::string& type = "");
     int  createCategoryL1(const CategoryL1& cat);
     bool updateCategoryL1(int id, const CategoryL1& cat);

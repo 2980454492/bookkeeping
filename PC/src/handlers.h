@@ -3,5 +3,5 @@
 #include "db.h"
 #include <httplib.h>
 
-// Registers all API routes on the given httplib::Server
+// 向 httplib::Server 注册全部 API 路由
 void registerRoutes(httplib::Server& svr, Database& db);

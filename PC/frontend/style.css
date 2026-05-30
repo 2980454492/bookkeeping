@@ -1,4 +1,4 @@
-/* ── Reset & Base ─────────────────────────────────────────── */
+/* ── 重置与基础样式 ────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -15,7 +15,7 @@ body {
     padding: 20px 24px;
 }
 
-/* ── Header ──────────────────────────────────────────────── */
+/* ── 页面头部 ────────────────────────────────────────── */
 .header {
     display: flex;
     align-items: baseline;
@@ -27,7 +27,7 @@ body {
 .header h1 { font-size: 24px; font-weight: 700; }
 .version  { color: #999; font-size: 13px; }
 
-/* ── Summary Cards ───────────────────────────────────────── */
+/* ── 汇总卡片 ────────────────────────────────────────── */
 .summary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -47,7 +47,7 @@ body {
 .expense-card .card-value { color: #ff4d4f; }
 .balance-card .card-value { color: #1677ff; }
 
-/* ── Sections ────────────────────────────────────────────── */
+/* ── 区块容器 ────────────────────────────────────────── */
 .section {
     background: #fff;
     border-radius: 10px;
@@ -63,7 +63,7 @@ body {
     border-bottom: 1px solid #f0f0f0;
 }
 
-/* ── Form ────────────────────────────────────────────────── */
+/* ── 表单 ────────────────────────────────────────────── */
 .add-form .form-row {
     display: flex;
     gap: 12px;
@@ -97,7 +97,7 @@ body {
     box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
 }
 
-/* ── Buttons ─────────────────────────────────────────────── */
+/* ── 按钮 ────────────────────────────────────────────── */
 .btn {
     padding: 8px 20px;
     border: none;
@@ -113,7 +113,7 @@ body {
 .btn-sm { padding: 5px 12px; font-size: 12px; background: #f0f0f0; color: #333; }
 .btn-sm:hover { background: #e0e0e0; }
 
-/* ── Filters ─────────────────────────────────────────────── */
+/* ── 筛选栏 ──────────────────────────────────────────── */
 .filters {
     display: flex;
     align-items: center;
@@ -129,7 +129,7 @@ body {
 }
 .record-count { color: #999; font-size: 13px; margin-left: auto; }
 
-/* ── Table ───────────────────────────────────────────────── */
+/* ── 表格 ────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
 table {
     width: 100%;
@@ -163,7 +163,7 @@ tbody tr:hover { background: #f5f9ff; }
 .amount-income  { color: #52c41a; font-weight: 600; }
 .amount-expense { color: #ff4d4f; font-weight: 600; }
 
-/* ── Responsive ──────────────────────────────────────────── */
+/* ── 响应式布局 ──────────────────────────────────────── */
 @media (max-width: 768px) {
     .summary { grid-template-columns: 1fr; }
     .add-form .form-row { flex-direction: column; }
