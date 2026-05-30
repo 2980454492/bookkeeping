@@ -78,6 +78,7 @@
             <h2>记录列表</h2>
 
             <!-- 筛选面板：类型 / 分类 / 日期区间 / 金额区间 / 关键字 / 排序 -->
+            <h3 class="panel-title">筛选</h3>
             <div class="filters">
                 <div class="filter-item">
                     <label for="filterType">类型</label>
@@ -119,6 +120,14 @@
                     <label for="filterKeyword">关键字</label>
                     <input type="text" id="filterKeyword" placeholder="备注/分类/金额" maxlength="50">
                 </div>
+            </div>
+
+            <!-- 分隔线：上方为筛选条件，下方为排序设置 -->
+            <hr class="filter-divider">
+
+            <!-- 排序面板 -->
+            <h3 class="panel-title">排序</h3>
+            <div class="filters sort-panel">
                 <div class="filter-item">
                     <label for="filterSortBy">排序字段</label>
                     <select id="filterSortBy">

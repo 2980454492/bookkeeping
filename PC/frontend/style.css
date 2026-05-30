@@ -116,6 +116,13 @@ body {
 .btn-sm:hover { background: #e0e0e0; }
 
 /* ── 筛选栏 ──────────────────────────────────────────── */
+/* 面板小标题（筛选 / 排序），比「记录列表」(h2 16px) 略小 */
+.panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 8px;
+}
 .filters {
     display: flex;
     align-items: flex-end;
@@ -148,6 +155,19 @@ body {
     outline: none;
     border-color: #1677ff;
     box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
+}
+
+/* 筛选与排序之间的分隔线 */
+.filter-divider {
+    border: none;
+    border-top: 1px solid #eaeaea;
+    margin: 4px 0 12px;
+}
+
+/* 排序面板：控件按内容宽度排列，不像筛选项那样撑满整行 */
+.sort-panel .filter-item {
+    flex: 0 0 auto;
+    min-width: 140px;
 }
 
 .filter-bar {
