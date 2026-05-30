@@ -101,7 +101,6 @@ function populateCategorySelects() {
     // .value 读取 <select> 当前选中项的 value 属性
     const fType = document.getElementById('fType').value;
     const fCatL1 = document.getElementById('fCatL1');       // 新增表单：一级分类
-    const filterCatL1 = document.getElementById('filterCatL1'); // 筛选栏：一级分类
 
     const cats = getCategoriesByType(fType);  // 仅取当前类型（支出/收入）的分类
 
@@ -112,8 +111,12 @@ function populateCategorySelects() {
         fCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.icon || ''} ${cat.name}</option>`;
     }
     updateL2Select();  // 一级分类变更后同步更新二级分类
+}
 
-    // 筛选栏显示所有类型的一级分类（不过滤 expense/income）
+// 填充筛选栏的一级分类下拉框（显示所有类型，不过滤 expense/income）
+// 仅在初始化时调用一次，避免新增表单切换类型时被连带重置
+function populateFilterCategorySelect() {
+    const filterCatL1 = document.getElementById('filterCatL1');
     filterCatL1.innerHTML = '<option value="">全部分类</option>';
     for (const cat of [...categories.expense, ...categories.income]) {
         filterCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
@@ -144,21 +147,51 @@ function updateL2Select() {
     }
 }
 
+// 根据筛选栏当前选中的一级分类，填充其二级分类下拉框
+// 一级分类为空或所选分类无二级时，仅保留「全部二级」占位项
+function updateFilterL2Select() {
+    const filterCatL1 = document.getElementById('filterCatL1').value;
+    const filterCatL2 = document.getElementById('filterCatL2');
+    const subs = getSubcategories(filterCatL1);
+
+    filterCatL2.innerHTML = '<option value="">全部二级</option>';
+    for (const sub of subs) {
+        filterCatL2.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
+    }
+}
+
 // ── 加载记录 ────────────────────────────────────────────────────────
 
 // 从后端拉取记录列表，更新缓存并刷新表格和汇总
 async function loadRecords() {
     // URLSearchParams：构建 query string，等价于 C++ 里拼接 ?key=value&...
     const params = new URLSearchParams();
-    const filterType = document.getElementById('filterType').value;
-    const filterCatL1 = document.getElementById('filterCatL1').value;
 
-    if (filterType) params.set('type', filterType);       // 对应后端 parseRecordQuery().type
-    if (filterCatL1) params.set('cat_l1', filterCatL1);   // 对应后端 parseRecordQuery().cat_l1
+    // 读取筛选面板各控件的值（空值表示该维度不参与筛选）
+    const filterType    = document.getElementById('filterType').value;
+    const filterCatL1   = document.getElementById('filterCatL1').value;
+    const filterCatL2   = document.getElementById('filterCatL2').value;
+    const dateFrom      = document.getElementById('filterDateFrom').value;
+    const dateTo        = document.getElementById('filterDateTo').value;
+    const amountMin     = document.getElementById('filterAmountMin').value;
+    const amountMax     = document.getElementById('filterAmountMax').value;
+    const keyword       = document.getElementById('filterKeyword').value.trim();
+    const sortBy        = document.getElementById('filterSortBy').value;
+    const sortOrder     = document.getElementById('filterSortOrder').value;
+
+    if (filterType)  params.set('type', filterType);       // 对应后端 parseRecordQuery().type
+    if (filterCatL1) params.set('cat_l1', filterCatL1);    // 对应后端 parseRecordQuery().cat_l1
+    if (filterCatL2) params.set('cat_l2', filterCatL2);    // 对应后端 parseRecordQuery().cat_l2
+    if (dateFrom)    params.set('date_from', dateFrom);    // 精确到天，后端自动补全为当天 00:00
+    if (dateTo)      params.set('date_to', dateTo);        // 后端自动补全为当天 23:59
+    if (amountMin !== '') params.set('amount_min', amountMin);
+    if (amountMax !== '') params.set('amount_max', amountMax);
+    if (keyword)     params.set('keyword', keyword);       // 模糊匹配备注/分类/金额
+
     params.set('page', currentPage);
     params.set('page_size', PAGE_SIZE);
-    params.set('sort_by', 'datetime');
-    params.set('sort_order', 'desc');
+    params.set('sort_by', sortBy || 'datetime');
+    params.set('sort_order', sortOrder || 'desc');
 
     try {
         const data = await API.get('/api/records?' + params.toString()); // → db.queryRecords()
@@ -418,6 +451,57 @@ function escapeHtml(str) {
     return div.innerHTML;        // 读取时自动转义为 &lt; &gt; 等
 }
 
+// ── 筛选辅助 ────────────────────────────────────────────────────────
+
+// 将 Date 对象格式化为 <input type="date"> 需要的 "YYYY-MM-DD"
+function toDateInputValue(d) {
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+}
+
+// 快捷日期：根据预设区间设置开始/结束日期输入框，并立即查询
+function setQuickDateRange(range) {
+    const fromEl = document.getElementById('filterDateFrom');
+    const toEl = document.getElementById('filterDateTo');
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();  // 0 ~ 11
+
+    if (range === 'all') {
+        fromEl.value = '';
+        toEl.value = '';
+    } else if (range === 'thisMonth') {
+        fromEl.value = toDateInputValue(new Date(y, m, 1));
+        toEl.value = toDateInputValue(new Date(y, m + 1, 0));  // 下月第 0 天 = 本月最后一天
+    } else if (range === 'lastMonth') {
+        fromEl.value = toDateInputValue(new Date(y, m - 1, 1));
+        toEl.value = toDateInputValue(new Date(y, m, 0));
+    } else if (range === 'thisYear') {
+        fromEl.value = toDateInputValue(new Date(y, 0, 1));
+        toEl.value = toDateInputValue(new Date(y, 11, 31));
+    }
+
+    currentPage = 1;
+    loadRecords();
+}
+
+// 重置全部筛选条件，回到默认视图
+function resetFilters() {
+    document.getElementById('filterType').value = '';
+    document.getElementById('filterCatL1').value = '';
+    updateFilterL2Select();
+    document.getElementById('filterCatL2').value = '';
+    document.getElementById('filterDateFrom').value = '';
+    document.getElementById('filterDateTo').value = '';
+    document.getElementById('filterAmountMin').value = '';
+    document.getElementById('filterAmountMax').value = '';
+    document.getElementById('filterKeyword').value = '';
+    document.getElementById('filterSortBy').value = 'datetime';
+    document.getElementById('filterSortOrder').value = 'desc';
+    currentPage = 1;
+    loadRecords();
+}
+
 // ── 初始化 ───────────────────────────────────────────────────────────
 
 // 页面加载完成后执行一次：拉数据 → 渲染 → 绑定事件
@@ -428,9 +512,10 @@ async function init() {
         .toISOString().slice(0, 16);  // 格式 "YYYY-MM-DDTHH:MM"
     document.getElementById('fDatetime').value = local;
 
-    await loadCategories();       // 1. 拉分类 → 写入 categories 缓存
-    populateCategorySelects();    // 2. 填充下拉框
-    await loadRecords();          // 3. 拉记录 → 渲染表格和汇总
+    await loadCategories();          // 1. 拉分类 → 写入 categories 缓存
+    populateCategorySelects();       // 2. 填充新增表单下拉框
+    populateFilterCategorySelect();  // 3. 填充筛选栏一级分类下拉框
+    await loadRecords();             // 4. 拉记录 → 渲染表格和汇总
 
     // ── 事件绑定（用户操作 → 回调函数） ─────────────────────────────
     // addEventListener(事件名, 回调函数)：注册事件监听，类似 C++ 信号/槽
@@ -446,20 +531,44 @@ async function init() {
     // 切换一级分类 → 更新二级分类选项
     document.getElementById('fCatL1').addEventListener('change', updateL2Select);
 
-    // 筛选栏：类型变化 → 重置到第 1 页并重新加载
-    document.getElementById('filterType').addEventListener('change', () => {
-        currentPage = 1;
-        loadRecords();
+    // 下拉类筛选：变化即重置到第 1 页并重新加载
+    ['filterType', 'filterCatL2', 'filterSortBy', 'filterSortOrder'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => {
+            currentPage = 1;
+            loadRecords();
+        });
     });
 
-    // 筛选栏：分类变化 → 重置到第 1 页并重新加载
+    // 一级分类变化 → 联动二级分类下拉框，再重新加载
     document.getElementById('filterCatL1').addEventListener('change', () => {
+        updateFilterL2Select();
         currentPage = 1;
         loadRecords();
     });
 
-    // 刷新按钮 → 重新加载记录
-    document.getElementById('btnRefresh').addEventListener('click', loadRecords);
+    // 文本/数字/日期类输入：回车即查询
+    ['filterDateFrom', 'filterDateTo', 'filterAmountMin', 'filterAmountMax', 'filterKeyword'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                currentPage = 1;
+                loadRecords();
+            }
+        });
+    });
+
+    // 查询按钮 → 应用全部筛选条件
+    document.getElementById('btnSearch').addEventListener('click', () => {
+        currentPage = 1;
+        loadRecords();
+    });
+
+    // 重置按钮 → 清空全部筛选条件
+    document.getElementById('btnReset').addEventListener('click', resetFilters);
+
+    // 快捷日期按钮（本月/上月/今年/全部）
+    document.querySelectorAll('.quick-dates [data-range]').forEach(btn => {
+        btn.addEventListener('click', () => setQuickDateRange(btn.dataset.range));
+    });
 
     // ── 编辑弹窗事件绑定 ──────────────────────────────────────────
     // 编辑表单提交 → 保存修改

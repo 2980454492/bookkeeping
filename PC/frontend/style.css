@@ -118,18 +118,55 @@ body {
 /* ── 筛选栏 ──────────────────────────────────────────── */
 .filters {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    align-items: flex-end;
+    gap: 10px 12px;
     margin-bottom: 12px;
     flex-wrap: wrap;
 }
-.filters select {
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    flex: 1 1 120px;
+}
+.filter-item label {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+}
+.filters select,
+.filters input {
     padding: 6px 10px;
     border: 1px solid #d9d9d9;
     border-radius: 6px;
     font-size: 13px;
+    width: 100%;
+    transition: border-color 0.2s;
 }
-.record-count { color: #999; font-size: 13px; margin-left: auto; }
+.filters select:focus,
+.filters input:focus {
+    outline: none;
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22,119,255,0.1);
+}
+
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding-top: 4px;
+    border-top: 1px dashed #f0f0f0;
+}
+.quick-dates { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+.record-count { color: #999; font-size: 13px; }
 
 /* ── 表格 ────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }

@@ -31,7 +31,10 @@ target_link_libraries(bookkeeping PRIVATE
 )
 
 # ── 将资源文件复制到构建目录 ───────────────────────────────────
-add_custom_command(TARGET bookkeeping POST_BUILD
+# 用「始终执行」的自定义目标而非 POST_BUILD：POST_BUILD 只在可执行文件重新链接时才运行，
+# 仅修改 frontend/ 等资源（C++ 源码未变）时不会触发，导致 build/ 下前端文件停留在旧版本。
+# 该 target 无输出文件，CMake 视其永远过期，每次 `cmake --build` 都会重新复制。
+add_custom_target(copy_assets ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/frontend
         $<TARGET_FILE_DIR:bookkeeping>/frontend
@@ -40,3 +43,4 @@ add_custom_command(TARGET bookkeeping POST_BUILD
         $<TARGET_FILE_DIR:bookkeeping>/categories.json
     COMMENT "正在复制前端文件和分类模板到构建目录"
 )
+add_dependencies(copy_assets bookkeeping)
