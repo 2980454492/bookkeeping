@@ -1,3 +1,22 @@
+// handlers.cpp — REST API 实现（cpp-httplib）
+//
+// 约定：
+//   - 成功响应：application/json
+//   - 业务/解析错误：{"error":"..."}，HTTP 4xx/5xx
+//   - 路由 lambda 以 [&] 捕获 db，须在 Server 存活期内有效
+//
+// 已注册端点一览：
+//   GET    /api/health
+//   GET    /api/records              ?keyword&type&cat_l1&...&page&page_size
+//   GET    /api/records/:id
+//   POST   /api/records              body: Record JSON
+//   PUT    /api/records/:id
+//   DELETE /api/records/:id
+//   GET    /api/categories           ?type=income|expense
+//   POST   /api/categories/l1
+//   DELETE /api/categories/l1/:id
+//   POST   /api/categories/reset     从 cwd 下 categories.json 恢复（路径见注）
+
 #include "handlers.h"
 
 #include <json.hpp>
@@ -6,7 +25,7 @@
 
 using json = nlohmann::json;
 
-// ── 工具函数：解析通用查询参数 ──────────────────────────────────────
+// ── 查询参数 → RecordQuery ─────────────────────────────────────────
 
 static RecordQuery parseRecordQuery(const httplib::Request& req) {
     RecordQuery q;
@@ -25,7 +44,7 @@ static RecordQuery parseRecordQuery(const httplib::Request& req) {
     return q;
 }
 
-// ── JSON 序列化 / 反序列化 ──────────────────────────────────────────
+// ── 与前端字段对齐的 JSON 转换 ─────────────────────────────────────
 
 static json recordToJson(const Record& r) {
     return {
@@ -41,6 +60,7 @@ static json recordToJson(const Record& r) {
     };
 }
 
+/** 从 POST/PUT 请求体解析；id 由 URL 提供，不在 body 中 */
 static Record jsonToRecord(const json& j) {
     Record r;
     if (j.contains("datetime"))    r.datetime    = j["datetime"].get<std::string>();
@@ -69,18 +89,18 @@ static json errorJson(const std::string& msg) {
     return {{"error", msg}};
 }
 
-// ── 路由注册 ─────────────────────────────────────────────────────────
+// ── 路由注册 ───────────────────────────────────────────────────────
 
 void registerRoutes(httplib::Server& svr, Database& db) {
 
-    // ── 健康检查 ──────────────────────────────────────────────────
+    // ── 健康检查（前端或监控可用来判断服务是否存活）────────────
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
         res.set_content("{\"status\":\"ok\"}", "application/json");
     });
 
-    // ── 记录相关接口 ──────────────────────────────────────────────
+    // ── 收支记录 ─────────────────────────────────────────────────
 
-    // GET /api/records — 查询记录列表（支持筛选条件）
+    // GET /api/records — 分页列表 + 筛选
     svr.Get("/api/records", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             auto q = parseRecordQuery(req);
@@ -104,7 +124,7 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // GET /api/records/:id — 获取单条记录
+    // GET /api/records/:id — 单条详情
     svr.Get(R"(/api/records/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
@@ -121,13 +141,12 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // POST /api/records — 新增记录
+    // POST /api/records — 新建；校验通过后返回 201 + 完整记录（含 id、时间戳）
     svr.Post("/api/records", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             auto j = json::parse(req.body);
             Record r = jsonToRecord(j);
 
-            // 校验必填字段
             if (r.datetime.empty() || r.type.empty() || r.category_l1.empty()) {
                 res.status = 400;
                 res.set_content(errorJson("缺少必填字段: datetime, type, category_l1").dump(),
@@ -164,7 +183,7 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // PUT /api/records/:id — 更新记录
+    // PUT /api/records/:id — 全量更新 body 中的字段
     svr.Put(R"(/api/records/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
@@ -188,7 +207,7 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // DELETE /api/records/:id — 删除记录
+    // DELETE /api/records/:id
     svr.Delete(R"(/api/records/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
@@ -204,9 +223,10 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // ── 分类相关接口 ──────────────────────────────────────────────
+    // ── 分类 ─────────────────────────────────────────────────────
+    // 注：二级分类的增删改 API 未暴露，仅通过 reset 与 DB 层 createCategoryL2 等内部使用
 
-    // GET /api/categories — 获取分类列表
+    // GET /api/categories — 树形扁平为 { id, name, type, icon, subcategories? }
     svr.Get("/api/categories", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             std::string type = req.get_param_value("type");
@@ -223,7 +243,7 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // POST /api/categories/l1 — 新增一级分类
+    // POST /api/categories/l1 — 用户自定义一级分类
     svr.Post("/api/categories/l1", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             auto j = json::parse(req.body);
@@ -248,7 +268,7 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // DELETE /api/categories/l1/:id — 删除一级分类
+    // DELETE /api/categories/l1/:id — 同时删除其下所有二级分类
     svr.Delete(R"(/api/categories/l1/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
@@ -260,7 +280,8 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // POST /api/categories/reset — 恢复默认分类
+    // POST /api/categories/reset — 恢复默认分类模板
+    // 路径为相对 cwd 的 "categories.json"；run.sh 在 build/ 下启动时通常能命中 POST_BUILD 复制的文件
     svr.Post("/api/categories/reset", [&](const httplib::Request&, httplib::Response& res) {
         try {
             db.resetCategories("categories.json");
