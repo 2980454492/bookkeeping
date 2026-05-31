@@ -8,7 +8,7 @@
 </head>
 <body>
     <div id="app">
-        <!-- 记账页（第一格） -->
+        <!-- 记账页（第一页） -->
         <main id="pane-records" class="tab-pane active">
         <!-- 页面头部 -->
         <header class="header">
@@ -142,7 +142,7 @@
         </div>
         </main>
 
-        <!-- 统计页（第二格） -->
+        <!-- 统计页（第二页） -->
         <main id="pane-stats" class="tab-pane">
             <header class="header">
                 <h1>📊 收支统计</h1>
@@ -217,6 +217,35 @@
             </div>
         </main>
 
+        <!-- 设置页（第三页） -->
+        <main id="pane-settings" class="tab-pane">
+            <header class="header">
+                <h1>⚙️ 设置</h1>
+            </header>
+
+            <div class="section settings-menu">
+                <button type="button" class="settings-menu-item" id="btnOpenCatManage">
+                    <span class="settings-menu-icon">🏷️</span>
+                    <span class="settings-menu-text">
+                        <span class="settings-menu-label">修改分类</span>
+                        <span class="settings-menu-desc">管理一级、二级分类</span>
+                    </span>
+                    <span class="settings-menu-arrow">›</span>
+                </button>
+            </div>
+        </main>
+
+        <!-- 修改分类弹窗（分级：一级 → 二级） -->
+        <div id="catManageModal" class="modal-overlay" style="display:none;">
+            <div class="modal modal-cat-manage">
+                <div class="modal-header">
+                    <h2 id="catManageTitle">修改分类</h2>
+                    <button type="button" class="modal-close" id="catManageClose">&times;</button>
+                </div>
+                <div id="catManageBody" class="cat-manage-body"></div>
+            </div>
+        </div>
+
         <!-- 底部导航 -->
         <nav class="bottom-nav">
             <button type="button" class="nav-item active" data-tab="records">
@@ -226,6 +255,10 @@
             <button type="button" class="nav-item" data-tab="stats">
                 <span class="nav-icon">📊</span>
                 <span class="nav-label">统计</span>
+            </button>
+            <button type="button" class="nav-item" data-tab="settings">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">设置</span>
             </button>
         </nav>
 

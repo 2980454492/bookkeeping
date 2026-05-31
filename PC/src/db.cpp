@@ -11,7 +11,9 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <cerrno>
 #include <iostream>
+#include <filesystem>
 
 using json = nlohmann::json;
 
@@ -419,13 +421,19 @@ std::vector<CategoryL1> Database::getCategories(const std::string& type) {
 
         // N+1 查询：每个一级拉取其二级名称列表（分类数量小，可接受）
         sqlite3_stmt* stmt2 = nullptr;
-        sqlite3_prepare_v2(db_, "SELECT name FROM category_l2 WHERE l1_id=? ORDER BY sort_order, id",
+        sqlite3_prepare_v2(db_, "SELECT id, name FROM category_l2 WHERE l1_id=? ORDER BY sort_order, id",
                            -1, &stmt2, nullptr);
         if (stmt2) {
             sqlite3_bind_int(stmt2, 1, cat.id);
             while (sqlite3_step(stmt2) == SQLITE_ROW) {
-                const char* sub = reinterpret_cast<const char*>(sqlite3_column_text(stmt2, 0));
-                if (sub) cat.subcategories.push_back(sub);
+                CategorySubItem sub;
+                sub.id = sqlite3_column_int(stmt2, 0);
+                const char* nm = reinterpret_cast<const char*>(sqlite3_column_text(stmt2, 1));
+                if (nm) {
+                    sub.name = nm;
+                    cat.subcategories.push_back(sub.name);
+                    cat.subs.push_back(sub);
+                }
             }
             sqlite3_finalize(stmt2);
         }
@@ -495,4 +503,64 @@ bool Database::deleteCategoryL2(int id) {
     } catch (...) {
         return false;
     }
+}
+
+bool Database::exportCategoriesToJson(const std::string& json_path) const {
+    if (!db_) return false;
+    if (json_path.empty()) {
+        std::cerr << "[DB] 分类文件路径为空，无法导出" << std::endl;
+        return false;
+    }
+
+    auto all = const_cast<Database*>(this)->getCategories("");
+    json root;
+    root["version"] = "1.0";
+    root["updated"] = "exported";
+    root["expense"] = json::array();
+    root["income"] = json::array();
+
+    for (const auto& cat : all) {
+        json item = {{"name", cat.name}, {"icon", cat.icon}};
+        if (!cat.subcategories.empty()) {
+            item["subcategories"] = cat.subcategories;
+        }
+        if (cat.type == "expense") {
+            root["expense"].push_back(item);
+        } else if (cat.type == "income") {
+            root["income"].push_back(item);
+        }
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path out_path = fs::absolute(json_path);
+    const fs::path tmp_path = out_path.string() + ".tmp";
+
+    std::ofstream ofs(tmp_path, std::ios::out | std::ios::trunc);
+    if (!ofs.is_open()) {
+        std::cerr << "[DB] 无法写入分类文件: " << out_path
+                  << " (" << std::strerror(errno) << ")" << std::endl;
+        return false;
+    }
+    ofs << root.dump(2);
+    ofs.flush();
+    if (!ofs.good()) {
+        std::cerr << "[DB] 写入分类临时文件失败: " << tmp_path << std::endl;
+        fs::remove(tmp_path);
+        return false;
+    }
+    ofs.close();
+
+    std::error_code ec;
+    fs::remove(out_path, ec);
+    ec.clear();
+    fs::rename(tmp_path, out_path, ec);
+    if (ec) {
+        std::cerr << "[DB] 无法保存分类文件: " << out_path
+                  << " (" << ec.message() << ")" << std::endl;
+        fs::remove(tmp_path, ec);
+        return false;
+    }
+
+    std::cout << "[DB] 分类已导出: " << out_path << std::endl;
+    return true;
 }

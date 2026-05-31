@@ -9,4 +9,4 @@
 #include <httplib.h>
 
 /** 注册全部 API 路由；db 以引用捕获，须在 svr.listen 期间保持存活 */
-void registerRoutes(httplib::Server& svr, Database& db);
+void registerRoutes(httplib::Server& svr, Database& db, const std::string& categories_json_path);

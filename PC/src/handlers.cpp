@@ -82,8 +82,22 @@ static json categoryL1ToJson(const CategoryL1& cat) {
     if (!cat.subcategories.empty()) {
         j["subcategories"] = cat.subcategories;
     }
+    if (!cat.subs.empty()) {
+        json subs_arr = json::array();
+        for (const auto& s : cat.subs) {
+            subs_arr.push_back({{"id", s.id}, {"name", s.name}});
+        }
+        j["subs"] = subs_arr;
+    }
     return j;
 }
+
+static bool persistCategoriesFile(Database& db, const std::string& path) {
+    return db.exportCategoriesToJson(path);
+}
+
+// 路由 lambda 异步执行，须保存路径副本（不能引用 main 传入的临时 string）
+static std::string g_categories_json_path;
 
 static json errorJson(const std::string& msg) {
     return {{"error", msg}};
@@ -91,7 +105,8 @@ static json errorJson(const std::string& msg) {
 
 // ── 路由注册 ───────────────────────────────────────────────────────
 
-void registerRoutes(httplib::Server& svr, Database& db) {
+void registerRoutes(httplib::Server& svr, Database& db, const std::string& categories_json_path) {
+    g_categories_json_path = categories_json_path;
 
     // ── 健康检查（前端或监控可用来判断服务是否存活）────────────
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
@@ -249,10 +264,9 @@ void registerRoutes(httplib::Server& svr, Database& db) {
         }
     });
 
-    // ── 分类 ─────────────────────────────────────────────────────
-    // 注：二级分类的增删改 API 未暴露，仅通过 reset 与 DB 层 createCategoryL2 等内部使用
+    // ── 分类（增删改后同步写入 categories_json_path）────────────────
 
-    // GET /api/categories — 树形扁平为 { id, name, type, icon, subcategories? }
+    // GET /api/categories — { id, name, type, icon, subcategories?, subs? }
     svr.Get("/api/categories", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             std::string type = req.get_param_value("type");
@@ -286,7 +300,49 @@ void registerRoutes(httplib::Server& svr, Database& db) {
 
             int id = db.createCategoryL1(cat);
             cat.id = id;
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("分类已创建但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
             res.status = 201;
+            res.set_content(categoryL1ToJson(cat).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // PUT /api/categories/l1/:id
+    svr.Put(R"(/api/categories/l1/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            int id = std::stoi(req.matches[1]);
+            auto j = json::parse(req.body);
+            CategoryL1 cat;
+            cat.name = j.value("name", "");
+            cat.type = j.value("type", "");
+            cat.icon = j.value("icon", "");
+            cat.sort_order = j.value("sort_order", 0);
+
+            if (cat.name.empty() || cat.type.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("name 和 type 为必填字段").dump(), "application/json");
+                return;
+            }
+
+            if (!db.updateCategoryL1(id, cat)) {
+                res.status = 500;
+                res.set_content(errorJson("更新一级分类失败").dump(), "application/json");
+                return;
+            }
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("更新成功但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
+            cat.id = id;
             res.set_content(categoryL1ToJson(cat).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 500;
@@ -298,7 +354,107 @@ void registerRoutes(httplib::Server& svr, Database& db) {
     svr.Delete(R"(/api/categories/l1/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
         try {
             int id = std::stoi(req.matches[1]);
-            db.deleteCategoryL1(id);
+            if (!db.deleteCategoryL1(id)) {
+                res.status = 500;
+                res.set_content(errorJson("删除一级分类失败").dump(), "application/json");
+                return;
+            }
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("删除成功但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
+            res.set_content("{\"success\":true}", "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // POST /api/categories/l2
+    svr.Post("/api/categories/l2", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto j = json::parse(req.body);
+            CategoryL2 cat;
+            cat.l1_id = j.value("l1_id", 0);
+            cat.name = j.value("name", "");
+            cat.sort_order = j.value("sort_order", 0);
+
+            if (cat.l1_id <= 0 || cat.name.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("l1_id 和 name 为必填字段").dump(), "application/json");
+                return;
+            }
+
+            int id = db.createCategoryL2(cat);
+            cat.id = id;
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("二级分类已创建但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
+            res.status = 201;
+            res.set_content(json({{"id", cat.id}, {"l1_id", cat.l1_id}, {"name", cat.name}}).dump(),
+                            "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // PUT /api/categories/l2/:id
+    svr.Put(R"(/api/categories/l2/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            int id = std::stoi(req.matches[1]);
+            auto j = json::parse(req.body);
+            CategoryL2 cat;
+            cat.l1_id = j.value("l1_id", 0);
+            cat.name = j.value("name", "");
+            cat.sort_order = j.value("sort_order", 0);
+
+            if (cat.name.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("name 为必填字段").dump(), "application/json");
+                return;
+            }
+
+            if (!db.updateCategoryL2(id, cat)) {
+                res.status = 500;
+                res.set_content(errorJson("更新二级分类失败").dump(), "application/json");
+                return;
+            }
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("更新成功但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
+            cat.id = id;
+            res.set_content(json({{"id", cat.id}, {"l1_id", cat.l1_id}, {"name", cat.name}}).dump(),
+                            "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // DELETE /api/categories/l2/:id
+    svr.Delete(R"(/api/categories/l2/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            int id = std::stoi(req.matches[1]);
+            if (!db.deleteCategoryL2(id)) {
+                res.status = 500;
+                res.set_content(errorJson("删除二级分类失败").dump(), "application/json");
+                return;
+            }
+            if (!persistCategoriesFile(db, g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("删除成功但写入 categories.json 失败").dump(),
+                                "application/json");
+                return;
+            }
             res.set_content("{\"success\":true}", "application/json");
         } catch (const std::exception& e) {
             res.status = 500;
@@ -307,10 +463,13 @@ void registerRoutes(httplib::Server& svr, Database& db) {
     });
 
     // POST /api/categories/reset — 恢复默认分类模板
-    // 路径为相对 cwd 的 "categories.json"；run.sh 在 build/ 下启动时通常能命中 POST_BUILD 复制的文件
     svr.Post("/api/categories/reset", [&](const httplib::Request&, httplib::Response& res) {
         try {
-            db.resetCategories("categories.json");
+            if (!db.resetCategories(g_categories_json_path)) {
+                res.status = 500;
+                res.set_content(errorJson("恢复默认分类失败").dump(), "application/json");
+                return;
+            }
             res.set_content("{\"success\":true}", "application/json");
         } catch (const std::exception& e) {
             res.status = 500;

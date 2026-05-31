@@ -94,8 +94,12 @@ async function loadCategories() {
         categories.income = [];
         // 后端返回 JSON 数组，按 type 字段拆分到两个列表
         for (const cat of data) {
-            if (cat.type === 'expense') categories.expense.push(cat);
-            else categories.income.push(cat);
+            const item = {
+                ...cat,
+                subs: cat.subs || []
+            };
+            if (cat.type === 'expense') categories.expense.push(item);
+            else categories.income.push(item);
         }
         console.log('[App] 分类已加载:', categories.expense.length + categories.income.length);
     } catch (e) {
@@ -489,6 +493,10 @@ function escapeHtml(str) {
 
 // ── 底部导航与统计页 ────────────────────────────────────────────────
 
+// 分类管理弹窗状态
+let settingsCatType = 'expense';
+let catManageExpandedL1Id = 0;  // 当前展开的一级分类 id，0 表示均未展开
+
 function switchTab(tab) {
     document.querySelectorAll('.tab-pane').forEach(el => {
         el.classList.toggle('active', el.id === `pane-${tab}`);
@@ -497,6 +505,230 @@ function switchTab(tab) {
         el.classList.toggle('active', el.dataset.tab === tab);
     });
     if (tab === 'stats') loadStatsPage();
+}
+
+// 分类变更后刷新全局缓存；若弹窗打开则刷新当前层级视图
+async function refreshCategoriesAll() {
+    await loadCategories();
+    populateFilterCategorySelect();
+    if (document.getElementById('catManageModal').style.display !== 'none') {
+        renderCatManageModal();
+    }
+}
+
+function openCatManageModal() {
+    catManageExpandedL1Id = 0;
+    renderCatManageModal();
+    document.getElementById('catManageModal').style.display = 'flex';
+}
+
+function closeCatManageModal() {
+    document.getElementById('catManageModal').style.display = 'none';
+}
+
+function toggleCatManageL1(id) {
+    catManageExpandedL1Id = catManageExpandedL1Id === id ? 0 : id;
+    renderCatManageModal();
+}
+
+function renderCatManageModal() {
+    const body = document.getElementById('catManageBody');
+    document.getElementById('catManageTitle').textContent = '修改分类';
+
+    const cats = getCategoriesByType(settingsCatType);
+    const listHtml = cats.length === 0
+        ? '<div class="cat-manage-empty">暂无一级分类</div>'
+        : `<ul class="cat-manage-groups">${cats.map(cat => {
+            const expanded = catManageExpandedL1Id === cat.id;
+            const subs = cat.subs || [];
+            const subsPanel = expanded
+                ? `<div class="cat-manage-l2-panel">
+                    ${subs.length === 0
+                        ? '<div class="cat-manage-l2-empty">暂无二级分类</div>'
+                        : `<ul class="cat-manage-l2-list">${subs.map(s => `
+                            <li class="cat-manage-l2-row">
+                                <span class="cat-row-name">${escapeHtml(s.name)}</span>
+                                <span class="cat-row-btns">
+                                    <button type="button" class="btn btn-sm" data-act="edit-l2" data-id="${s.id}" data-l1="${cat.id}" data-name="${escapeAttr(s.name)}">编辑</button>
+                                    <button type="button" class="btn btn-danger btn-sm" data-act="del-l2" data-id="${s.id}" data-name="${escapeAttr(s.name)}">删除</button>
+                                </span>
+                            </li>`).join('')}</ul>`}
+                    <button type="button" class="btn btn-sm cat-manage-add-l2" data-act="add-l2" data-l1="${cat.id}" data-l1name="${escapeAttr(cat.name)}">➕ 添加二级分类</button>
+                   </div>`
+                : '';
+            return `
+                <li class="cat-manage-group${expanded ? ' expanded' : ''}">
+                    <div class="cat-manage-l1-row" data-l1-id="${cat.id}">
+                        <span class="cat-row-chevron" aria-hidden="true">${expanded ? '▼' : '›'}</span>
+                        <span class="cat-row-icon">${escapeHtml(cat.icon || '📦')}</span>
+                        <span class="cat-row-name">${escapeHtml(cat.name)}</span>
+                        <span class="cat-row-btns">
+                            <button type="button" class="btn btn-sm" data-act="edit-l1" data-id="${cat.id}">编辑</button>
+                            <button type="button" class="btn btn-danger btn-sm" data-act="del-l1" data-id="${cat.id}" data-name="${escapeAttr(cat.name)}">删除</button>
+                        </span>
+                    </div>
+                    ${subsPanel}
+                </li>`;
+        }).join('')}</ul>`;
+
+    body.innerHTML = `
+        <p class="cat-manage-hint">点击一级分类展开二级；修改后自动保存到 categories.json</p>
+        <div class="settings-type-tabs">
+            <button type="button" class="btn btn-sm settings-type-btn${settingsCatType === 'expense' ? ' active' : ''}" data-ctype="expense">支出</button>
+            <button type="button" class="btn btn-sm settings-type-btn${settingsCatType === 'income' ? ' active' : ''}" data-ctype="income">收入</button>
+        </div>
+        ${listHtml}
+        <div class="cat-manage-footer">
+            <button type="button" class="btn btn-primary btn-sm" data-act="add-l1">➕ 添加一级分类</button>
+            <button type="button" class="btn btn-sm" data-act="reset-cats">↺ 恢复默认</button>
+        </div>
+    `;
+}
+
+async function settingsAddL1() {
+    const name = prompt('一级分类名称');
+    if (!name || !name.trim()) return;
+    const icon = prompt('图标（emoji，可留空）', '📦') || '📦';
+    try {
+        await API.post('/api/categories/l1', {
+            name: name.trim(),
+            type: settingsCatType,
+            icon: icon.trim() || '📦',
+            sort_order: getCategoriesByType(settingsCatType).length
+        });
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('添加失败: ' + e.message);
+    }
+}
+
+async function settingsEditL1(id) {
+    const cat = [...categories.expense, ...categories.income].find(c => c.id === id);
+    if (!cat) return;
+    const name = prompt('一级分类名称', cat.name);
+    if (name === null) return;
+    if (!name.trim()) { alert('名称不能为空'); return; }
+    const icon = prompt('图标（emoji）', cat.icon || '📦');
+    if (icon === null) return;
+    try {
+        await API.put('/api/categories/l1/' + id, {
+            name: name.trim(),
+            type: cat.type,
+            icon: (icon.trim() || '📦'),
+            sort_order: cat.sort_order || 0
+        });
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('保存失败: ' + e.message);
+    }
+}
+
+async function settingsDeleteL1(id, name) {
+    if (!confirm(`确认删除一级分类「${name}」及其下所有二级分类？`)) return;
+    try {
+        await API.del('/api/categories/l1/' + id);
+        if (catManageExpandedL1Id === id) catManageExpandedL1Id = 0;
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+async function settingsAddL2(l1Id, l1Name) {
+    const name = prompt(`「${l1Name}」下的二级分类名称`);
+    if (!name || !name.trim()) return;
+    const cat = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
+    const sortOrder = cat && cat.subs ? cat.subs.length : 0;
+    try {
+        await API.post('/api/categories/l2', {
+            l1_id: l1Id,
+            name: name.trim(),
+            sort_order: sortOrder
+        });
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('添加失败: ' + e.message);
+    }
+}
+
+async function settingsEditL2(id, l1Id, oldName) {
+    const name = prompt('二级分类名称', oldName);
+    if (name === null) return;
+    if (!name.trim()) { alert('名称不能为空'); return; }
+    const cat = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
+    const sub = cat && cat.subs ? cat.subs.find(s => s.id === id) : null;
+    try {
+        await API.put('/api/categories/l2/' + id, {
+            l1_id: l1Id,
+            name: name.trim(),
+            sort_order: sub ? (sub.sort_order || 0) : 0
+        });
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('保存失败: ' + e.message);
+    }
+}
+
+async function settingsDeleteL2(id, name) {
+    if (!confirm(`确认删除二级分类「${name}」？`)) return;
+    try {
+        await API.del('/api/categories/l2/' + id);
+        await refreshCategoriesAll();
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+async function settingsResetCategories() {
+    if (!confirm('将用 categories.json 默认模板覆盖当前分类，是否继续？')) return;
+    try {
+        await API.post('/api/categories/reset', {});
+        await refreshCategoriesAll();
+        alert('已恢复默认分类');
+    } catch (e) {
+        alert('恢复失败: ' + e.message);
+    }
+}
+
+function escapeAttr(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
+function setupSettingsPage() {
+    document.getElementById('btnOpenCatManage').addEventListener('click', openCatManageModal);
+    document.getElementById('catManageClose').addEventListener('click', closeCatManageModal);
+    document.getElementById('catManageModal').addEventListener('click', (ev) => {
+        if (ev.target.id === 'catManageModal') closeCatManageModal();
+    });
+
+    document.getElementById('catManageBody').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('button[data-act]');
+        if (btn) {
+            const act = btn.dataset.act;
+            if (btn.dataset.ctype) {
+                settingsCatType = btn.dataset.ctype;
+                catManageExpandedL1Id = 0;
+                renderCatManageModal();
+                return;
+            }
+            if (act === 'add-l1') settingsAddL1();
+            else if (act === 'edit-l1') settingsEditL1(parseInt(btn.dataset.id, 10));
+            else if (act === 'del-l1') settingsDeleteL1(parseInt(btn.dataset.id, 10), btn.dataset.name);
+            else if (act === 'reset-cats') settingsResetCategories();
+            else if (act === 'add-l2') settingsAddL2(parseInt(btn.dataset.l1, 10), btn.dataset.l1name);
+            else if (act === 'edit-l2') settingsEditL2(parseInt(btn.dataset.id, 10), parseInt(btn.dataset.l1, 10), btn.dataset.name);
+            else if (act === 'del-l2') settingsDeleteL2(parseInt(btn.dataset.id, 10), btn.dataset.name);
+            return;
+        }
+
+        const l1Row = ev.target.closest('.cat-manage-l1-row');
+        if (l1Row) {
+            toggleCatManageL1(parseInt(l1Row.dataset.l1Id, 10));
+        }
+    });
 }
 
 // 拉取指定日期区间内的全部记录（用于统计聚合）
@@ -946,6 +1178,8 @@ async function init() {
     document.querySelectorAll('.nav-item').forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
+
+    setupSettingsPage();
 
     populateStatsYearList();
     updateStatsYearDisplay();

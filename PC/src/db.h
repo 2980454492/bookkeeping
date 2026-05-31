@@ -54,7 +54,13 @@ struct RecordListResult {
     int page_size = 50;
 };
 
-/** 一级分类；subcategories 仅在查询输出时填充，插入库时不写此字段 */
+/** 二级分类项（查询时带 id，供设置页增删改） */
+struct CategorySubItem {
+    int id = 0;
+    std::string name;
+};
+
+/** 一级分类；subcategories / subs 仅在查询输出时填充 */
 struct CategoryL1 {
     int id = 0;
     std::string name;
@@ -62,6 +68,7 @@ struct CategoryL1 {
     std::string icon;       // 前端展示用图标标识
     int sort_order = 0;
     std::vector<std::string> subcategories;
+    std::vector<CategorySubItem> subs;
 };
 
 /** 二级分类，外键 l1_id 指向 category_l1 */
@@ -105,6 +112,9 @@ public:
 
     /** 清空分类表后重新从 JSON 导入（不删除 records 表数据） */
     bool resetCategories(const std::string& categories_json_path);
+
+    /** 将当前分类导出为 categories.json 格式并写入文件 */
+    bool exportCategoriesToJson(const std::string& json_path) const;
 
 private:
     void createTables();
