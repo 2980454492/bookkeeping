@@ -65,14 +65,6 @@
                     </select>
                 </div>
                 <div class="filter-item">
-                    <label for="filterDateFrom">开始日期</label>
-                    <input type="date" id="filterDateFrom">
-                </div>
-                <div class="filter-item">
-                    <label for="filterDateTo">结束日期</label>
-                    <input type="date" id="filterDateTo">
-                </div>
-                <div class="filter-item">
                     <label for="filterAmountMin">最小金额</label>
                     <input type="number" id="filterAmountMin" placeholder="不限" step="0.01" min="0">
                 </div>
@@ -81,8 +73,23 @@
                     <input type="number" id="filterAmountMax" placeholder="不限" step="0.01" min="0">
                 </div>
                 <div class="filter-item">
+                    <label for="filterDateFrom">开始日期</label>
+                    <input type="date" id="filterDateFrom">
+                </div>
+                <div class="filter-item">
+                    <label for="filterDateTo">结束日期</label>
+                    <input type="date" id="filterDateTo">
+                </div>
+                <div class="filter-item">
                     <label for="filterKeyword">关键字</label>
                     <input type="text" id="filterKeyword" placeholder="备注/分类/金额" maxlength="50">
+                </div>
+                <!-- 快捷日期 + 操作按钮 -->
+                <div class="quick-dates">
+                    <button type="button" class="btn btn-sm" data-range="thisMonth">本月</button>
+                    <button type="button" class="btn btn-sm" data-range="lastMonth">上月</button>
+                    <button type="button" class="btn btn-sm" data-range="thisYear">今年</button>
+                    <button type="button" class="btn btn-sm" data-range="all">全部</button>
                 </div>
             </div>
 
@@ -106,22 +113,13 @@
                         <option value="asc">升序</option>
                     </select>
                 </div>
-            </div>
-
-            <!-- 快捷日期 + 操作按钮 -->
-            <div class="filter-bar">
-                <div class="quick-dates">
-                    <button type="button" class="btn btn-sm" data-range="thisMonth">本月</button>
-                    <button type="button" class="btn btn-sm" data-range="lastMonth">上月</button>
-                    <button type="button" class="btn btn-sm" data-range="thisYear">今年</button>
-                    <button type="button" class="btn btn-sm" data-range="all">全部</button>
-                </div>
                 <div class="filter-actions">
                     <button class="btn btn-primary btn-sm" id="btnSearch">🔍 查询</button>
                     <button class="btn btn-sm" id="btnReset">↺ 重置</button>
                     <span class="record-count" id="recordCount">0 条记录</span>
                 </div>
             </div>
+
             <div class="table-wrap">
                 <table id="recordTable">
                     <thead>
