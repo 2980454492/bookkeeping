@@ -129,10 +129,11 @@ function renderCatL1Picker(prefix, selectedL1 = '', selectedL2 = '') {
     hidden.value = selectedL1 || '';
     const noneActive = !selectedL1 ? ' active' : '';
     const noneBtn = `<button type="button" class="cat-chip cat-none${noneActive}" data-l1-clear>不选</button>`;
+    const addBtn = '<button type="button" class="cat-chip cat-add-chip" data-cat-add="l1">➕ 添加</button>';
     picker.innerHTML = noneBtn + cats.map(cat => {
         const active = cat.name === selectedL1 ? ' active' : '';
         return `<button type="button" class="cat-chip${active}" data-l1="${escapeHtml(cat.name)}">${cat.icon || ''} ${escapeHtml(cat.name)}</button>`;
-    }).join('');
+    }).join('') + addBtn;
 
     updateCatL2Panel(prefix, selectedL1, selectedL2);
 }
@@ -157,10 +158,11 @@ function updateCatL2Panel(prefix, l1Name, selectedL2 = '') {
     hidden.value = selectedL2 || '';
     const noneActive = !selectedL2 ? ' active' : '';
     const noneBtn = `<button type="button" class="cat-chip cat-none${noneActive}" data-l2-clear>不选</button>`;
+    const addBtn = '<button type="button" class="cat-chip cat-add-chip" data-cat-add="l2">➕ 添加</button>';
     picker.innerHTML = noneBtn + subs.map(sub => {
         const active = sub === selectedL2 ? ' active' : '';
         return `<button type="button" class="cat-chip${active}" data-l2="${escapeHtml(sub)}">${escapeHtml(sub)}</button>`;
-    }).join('');
+    }).join('') + addBtn;
 }
 
 // 切换类型时清空已选分类并重新渲染一级分类
@@ -173,6 +175,10 @@ function setupCategoryPicker(prefix) {
     document.getElementById(`${prefix}CatL1Picker`).addEventListener('click', (ev) => {
         const btn = ev.target.closest('.cat-chip');
         if (!btn) return;
+        if (btn.dataset.catAdd === 'l1') {
+            formAddCategoryL1(prefix);
+            return;
+        }
         if (btn.hasAttribute('data-l1-clear')) {
             document.getElementById(`${prefix}CatL1`).value = '';
             document.querySelectorAll(`#${prefix}CatL1Picker .cat-chip`).forEach(el => {
@@ -193,6 +199,10 @@ function setupCategoryPicker(prefix) {
     document.getElementById(`${prefix}CatL2Picker`).addEventListener('click', (ev) => {
         const btn = ev.target.closest('.cat-chip');
         if (!btn) return;
+        if (btn.dataset.catAdd === 'l2') {
+            formAddCategoryL2(prefix);
+            return;
+        }
         if (btn.hasAttribute('data-l2-clear')) {
             document.getElementById(`${prefix}CatL2`).value = '';
             document.querySelectorAll(`#${prefix}CatL2Picker .cat-chip`).forEach(el => {
@@ -213,26 +223,140 @@ function setupCategoryPicker(prefix) {
     });
 }
 
-// 填充筛选栏的一级分类下拉框（显示所有类型，不过滤 expense/income）
-// 仅在初始化时调用一次，避免新增表单切换类型时被连带重置
+// ── 新增分类（记账页 / 设置页共用）────────────────────────────────
+
+async function addCategoryL1ForType(type, { selectName } = {}) {
+    const label = type === 'expense' ? '支出一级分类名称' : '收入分类名称';
+    const name = prompt(label);
+    if (!name || !name.trim()) return null;
+    const icon = prompt('图标（emoji，可留空）', '📦') || '📦';
+    const trimmed = name.trim();
+    try {
+        await API.post('/api/categories/l1', {
+            name: trimmed,
+            type,
+            icon: icon.trim() || '📦',
+            sort_order: getCategoriesByType(type).length
+        });
+        await refreshCategoriesAll();
+        if (selectName) selectName(trimmed);
+        return trimmed;
+    } catch (e) {
+        alert('添加失败: ' + e.message);
+        return null;
+    }
+}
+
+async function addCategoryL2ForL1Name(l1Name, { selectName } = {}) {
+    const parent = [...categories.expense, ...categories.income].find(c => c.name === l1Name);
+    if (!parent || parent.type !== 'expense') {
+        alert('仅支出分类支持二级分类');
+        return null;
+    }
+    const name = prompt(`「${l1Name}」下的二级分类名称`);
+    if (!name || !name.trim()) return null;
+    const trimmed = name.trim();
+    const sortOrder = parent.subs ? parent.subs.length : 0;
+    try {
+        await API.post('/api/categories/l2', {
+            l1_id: parent.id,
+            name: trimmed,
+            sort_order: sortOrder
+        });
+        await refreshCategoriesAll();
+        if (selectName) selectName(trimmed);
+        return trimmed;
+    } catch (e) {
+        alert('添加失败: ' + e.message);
+        return null;
+    }
+}
+
+function refreshOpenFormCategoryPickers() {
+    for (const prefix of ['f', 'e']) {
+        const modalId = prefix === 'f' ? 'addModal' : 'editModal';
+        if (document.getElementById(modalId).style.display === 'none') continue;
+        const l1 = document.getElementById(`${prefix}CatL1`).value;
+        const l2 = document.getElementById(`${prefix}CatL2`).value;
+        renderCatL1Picker(prefix, l1, l2);
+    }
+}
+
+async function formAddCategoryL1(prefix) {
+    const type = getFormType(prefix);
+    await addCategoryL1ForType(type, {
+        selectName: (name) => renderCatL1Picker(prefix, name, '')
+    });
+}
+
+async function formAddCategoryL2(prefix) {
+    const l1 = document.getElementById(`${prefix}CatL1`).value;
+    if (!l1) {
+        alert('请先选择一级分类');
+        return;
+    }
+    await addCategoryL2ForL1Name(l1, {
+        selectName: (name) => updateCatL2Panel(prefix, l1, name)
+    });
+}
+
+// 按收支类型取一级分类列表（type 为空时返回全部）
+function getCategoriesForFilterType(type) {
+    if (type === 'expense') return categories.expense;
+    if (type === 'income') return categories.income;
+    return [...categories.expense, ...categories.income];
+}
+
+function fillCategoryL1Select(selectEl, type, keepSelected) {
+    const cats = getCategoriesForFilterType(type);
+    const prev = keepSelected ? selectEl.value : '';
+    selectEl.innerHTML = '<option value="">全部分类</option>';
+    for (const cat of cats) {
+        selectEl.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
+    }
+    if (prev && cats.some(c => c.name === prev)) {
+        selectEl.value = prev;
+    } else {
+        selectEl.value = '';
+    }
+}
+
+// 填充记账页筛选栏一级分类（随「类型」联动）
 function populateFilterCategorySelect() {
-    const filterCatL1 = document.getElementById('filterCatL1');
-    filterCatL1.innerHTML = '<option value="">全部分类</option>';
-    for (const cat of [...categories.expense, ...categories.income]) {
-        filterCatL1.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
+    const type = document.getElementById('filterType').value;
+    fillCategoryL1Select(document.getElementById('filterCatL1'), type, true);
+    updateFilterL2Select();
+}
+
+function updateFilterCatL2Visibility() {
+    const wrap = document.getElementById('filterCatL2Wrap');
+    const l2 = document.getElementById('filterCatL2');
+    const type = document.getElementById('filterType').value;
+    const show = type !== 'income';
+    if (wrap) wrap.style.display = show ? '' : 'none';
+    if (!show) {
+        l2.value = '';
+        l2.innerHTML = '<option value="">全部二级</option>';
     }
 }
 
 // 根据筛选栏当前选中的一级分类，填充其二级分类下拉框
-// 一级分类为空或所选分类无二级时，仅保留「全部二级」占位项
 function updateFilterL2Select() {
-    const filterCatL1 = document.getElementById('filterCatL1').value;
+    updateFilterCatL2Visibility();
+    const type = document.getElementById('filterType').value;
     const filterCatL2 = document.getElementById('filterCatL2');
+    if (type === 'income') return;
+
+    const filterCatL1 = document.getElementById('filterCatL1').value;
+    const prevL2 = filterCatL2.value;
     const subs = getSubcategories(filterCatL1);
 
     filterCatL2.innerHTML = '<option value="">全部二级</option>';
     for (const sub of subs) {
         filterCatL2.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
+    }
+    if (prevL2 && subs.includes(prevL2)) {
+        filterCatL2.value = prevL2;
     }
 }
 
@@ -281,10 +405,17 @@ function readFilterFields(ids) {
 
 function applyFilterFields(ids, f) {
     document.getElementById(ids.type).value = f.type || '';
-    document.getElementById(ids.catL1).value = f.catL1 || '';
-    if (ids === RECORD_FILTER_IDS) updateFilterL2Select();
-    else updateExportFilterL2Select();
-    document.getElementById(ids.catL2).value = f.catL2 || '';
+    if (ids === RECORD_FILTER_IDS) {
+        populateFilterCategorySelect();
+        if (f.catL1) document.getElementById(ids.catL1).value = f.catL1;
+        updateFilterL2Select();
+        if (f.catL2) document.getElementById(ids.catL2).value = f.catL2;
+    } else {
+        populateExportFilterCategorySelect();
+        if (f.catL1) document.getElementById(ids.catL1).value = f.catL1;
+        updateExportFilterL2Select();
+        if (f.catL2) document.getElementById(ids.catL2).value = f.catL2;
+    }
     document.getElementById(ids.dateFrom).value = f.dateFrom || '';
     document.getElementById(ids.dateTo).value = f.dateTo || '';
     document.getElementById(ids.amountMin).value = f.amountMin || '';
@@ -570,6 +701,7 @@ function switchTab(tab) {
 async function refreshCategoriesAll() {
     await loadCategories();
     populateFilterCategorySelect();
+    refreshOpenFormCategoryPickers();
     if (document.getElementById('catManageModal').style.display !== 'none') {
         renderCatManageModal();
     }
@@ -661,21 +793,7 @@ function renderCatManageModal() {
 }
 
 async function settingsAddL1() {
-    const label = settingsCatType === 'expense' ? '支出一级分类名称' : '收入分类名称';
-    const name = prompt(label);
-    if (!name || !name.trim()) return;
-    const icon = prompt('图标（emoji，可留空）', '📦') || '📦';
-    try {
-        await API.post('/api/categories/l1', {
-            name: name.trim(),
-            type: settingsCatType,
-            icon: icon.trim() || '📦',
-            sort_order: getCategoriesByType(settingsCatType).length
-        });
-        await refreshCategoriesAll();
-    } catch (e) {
-        alert('添加失败: ' + e.message);
-    }
+    await addCategoryL1ForType(settingsCatType);
 }
 
 async function settingsEditL1(id) {
@@ -716,25 +834,7 @@ async function settingsDeleteL1(id, name) {
 }
 
 async function settingsAddL2(l1Id, l1Name) {
-    const parent = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
-    if (!parent || parent.type !== 'expense') {
-        alert('仅支出分类支持二级分类');
-        return;
-    }
-    const name = prompt(`「${l1Name}」下的二级分类名称`);
-    if (!name || !name.trim()) return;
-    const cat = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
-    const sortOrder = cat && cat.subs ? cat.subs.length : 0;
-    try {
-        await API.post('/api/categories/l2', {
-            l1_id: l1Id,
-            name: name.trim(),
-            sort_order: sortOrder
-        });
-        await refreshCategoriesAll();
-    } catch (e) {
-        alert('添加失败: ' + e.message);
-    }
+    await addCategoryL2ForL1Name(l1Name);
 }
 
 async function settingsEditL2(id, l1Id, oldName) {
@@ -786,20 +886,38 @@ function escapeAttr(str) {
 // ── 导出数据 ────────────────────────────────────────────────────────
 
 function populateExportFilterCategorySelect() {
-    const sel = document.getElementById('expFilterCatL1');
-    sel.innerHTML = '<option value="">全部分类</option>';
-    for (const cat of [...categories.expense, ...categories.income]) {
-        sel.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
+    const type = document.getElementById('expFilterType').value;
+    fillCategoryL1Select(document.getElementById('expFilterCatL1'), type, true);
+    updateExportFilterL2Select();
+}
+
+function updateExportFilterCatL2Visibility() {
+    const wrap = document.getElementById('expFilterCatL2Wrap');
+    const l2 = document.getElementById('expFilterCatL2');
+    const type = document.getElementById('expFilterType').value;
+    const show = type !== 'income';
+    if (wrap) wrap.style.display = show ? '' : 'none';
+    if (!show) {
+        l2.value = '';
+        l2.innerHTML = '<option value="">全部二级</option>';
     }
 }
 
 function updateExportFilterL2Select() {
-    const l1 = document.getElementById('expFilterCatL1').value;
+    updateExportFilterCatL2Visibility();
+    const type = document.getElementById('expFilterType').value;
     const sel = document.getElementById('expFilterCatL2');
+    if (type === 'income') return;
+
+    const l1 = document.getElementById('expFilterCatL1').value;
+    const prevL2 = sel.value;
     const subs = getSubcategories(l1);
     sel.innerHTML = '<option value="">全部二级</option>';
     for (const sub of subs) {
         sel.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
+    }
+    if (prevL2 && subs.includes(prevL2)) {
+        sel.value = prevL2;
     }
 }
 
@@ -877,6 +995,7 @@ function setupSettingsPage() {
     document.getElementById('exportModal').addEventListener('click', (ev) => {
         if (ev.target.id === 'exportModal') closeExportModal();
     });
+    document.getElementById('expFilterType').addEventListener('change', populateExportFilterCategorySelect);
     document.getElementById('expFilterCatL1').addEventListener('change', updateExportFilterL2Select);
     document.querySelectorAll('[data-exp-range]').forEach(btn => {
         btn.addEventListener('click', () => setExportQuickDateRange(btn.dataset.expRange));
@@ -1336,8 +1455,7 @@ function setExportQuickDateRange(range) {
 // 重置全部筛选条件，回到默认视图
 function resetFilters() {
     document.getElementById('filterType').value = '';
-    document.getElementById('filterCatL1').value = '';
-    updateFilterL2Select();
+    populateFilterCategorySelect();
     document.getElementById('filterCatL2').value = '';
     document.getElementById('filterDateFrom').value = '';
     document.getElementById('filterDateTo').value = '';
@@ -1403,8 +1521,14 @@ async function init() {
         if (ev.target.id === 'addModal') closeAddModal();
     });
 
+    document.getElementById('filterType').addEventListener('change', () => {
+        populateFilterCategorySelect();
+        currentPage = 1;
+        loadRecords();
+    });
+
     // 下拉类筛选：变化即重置到第 1 页并重新加载
-    ['filterType', 'filterCatL2', 'filterSortBy', 'filterSortOrder'].forEach(id => {
+    ['filterCatL2', 'filterSortBy', 'filterSortOrder'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => {
             currentPage = 1;
             loadRecords();
