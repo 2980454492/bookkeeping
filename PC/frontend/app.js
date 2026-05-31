@@ -263,29 +263,31 @@ async function loadRecords() {
 function renderRecords() {
     const tbody = document.getElementById('recordBody');
     if (currentRecords.length === 0) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无记录，添加一条吧 🎉</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无记录，添加一条吧 🎉</td></tr>';
         return;
     }
-    // Array.map：遍历数组，每个元素生成一段 HTML 字符串
-    // .join('')：将字符串数组合并为一个完整 HTML
     tbody.innerHTML = currentRecords.map(r => {
         const typeLabel = r.type === 'income' ? '收入' : '支出';
         const typeClass = r.type === 'income' ? 'type-income' : 'type-expense';
         const amountClass = r.type === 'income' ? 'amount-income' : 'amount-expense';
         const sign = r.type === 'income' ? '+' : '-';
+        const hasNote = !!(r.note && r.note.trim());
+        const mainCls = hasNote ? 'record-main has-note' : 'record-main';
+        const noteRow = hasNote
+            ? `<tr class="record-note-row"><td colspan="6" class="record-note">${escapeHtml(r.note)}</td></tr>`
+            : '';
         return `
-            <tr>
+            <tr class="${mainCls}">
                 <td>${escapeHtml(r.datetime)}</td>
                 <td><span class="type-tag ${typeClass}">${typeLabel}</span></td>
                 <td class="${amountClass}">${sign}¥${r.amount.toFixed(2)}</td>
                 <td>${escapeHtml(r.category_l1)}</td>
                 <td>${escapeHtml(r.category_l2 || '—')}</td>
-                <td>${escapeHtml(r.note || '')}</td>
                 <td>
                     <button class="btn btn-edit" onclick="openEditModal(${r.id})">编辑</button>
                     <button class="btn btn-danger" onclick="deleteRecord(${r.id})">删除</button>
                 </td>
-            </tr>
+            </tr>${noteRow}
         `;
     }).join('');
 }

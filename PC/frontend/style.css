@@ -603,6 +603,33 @@ tbody td {
 }
 tbody tr:hover { background: #f5f9ff; }
 .empty-row td { text-align: center; color: #bbb; padding: 40px; }
+
+/* 首页记录表：使用浏览器默认字号（1rem≈16px），备注略小 */
+#recordTable {
+    font-size: 1rem;
+}
+#recordTable tr.record-main.has-note td {
+    border-bottom: none;
+    padding-bottom: 4px;
+}
+#recordTable tr.record-note-row td {
+    padding: 0 12px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    white-space: normal;
+    word-break: break-word;
+}
+#recordTable tr.record-main:hover,
+#recordTable tr.record-main:hover + tr.record-note-row {
+    background: #f5f9ff;
+}
+#recordTable tr.record-note-row:hover {
+    background: #f5f9ff;
+}
+#recordTable .record-note {
+    font-size: 0.875rem;
+    color: #888;
+    line-height: 1.5;
+}
 .type-tag {
     display: inline-block;
     padding: 2px 8px;
