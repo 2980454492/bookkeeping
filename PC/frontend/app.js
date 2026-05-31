@@ -122,8 +122,10 @@ function renderCatL1Picker(prefix, selectedL1 = '', selectedL2 = '') {
     const hidden = document.getElementById(`${prefix}CatL1`);
     const cats = getCategoriesByType(type);
 
-    hidden.value = selectedL1;
-    picker.innerHTML = cats.map(cat => {
+    hidden.value = selectedL1 || '';
+    const noneActive = !selectedL1 ? ' active' : '';
+    const noneBtn = `<button type="button" class="cat-chip cat-none${noneActive}" data-l1-clear>不选</button>`;
+    picker.innerHTML = noneBtn + cats.map(cat => {
         const active = cat.name === selectedL1 ? ' active' : '';
         return `<button type="button" class="cat-chip${active}" data-l1="${escapeHtml(cat.name)}">${cat.icon || ''} ${escapeHtml(cat.name)}</button>`;
     }).join('');
@@ -148,8 +150,10 @@ function updateCatL2Panel(prefix, l1Name, selectedL2 = '') {
 
     group.style.display = '';
     const subs = getSubcategories(l1Name);
-    hidden.value = selectedL2;
-    picker.innerHTML = subs.map(sub => {
+    hidden.value = selectedL2 || '';
+    const noneActive = !selectedL2 ? ' active' : '';
+    const noneBtn = `<button type="button" class="cat-chip cat-none${noneActive}" data-l2-clear>不选</button>`;
+    picker.innerHTML = noneBtn + subs.map(sub => {
         const active = sub === selectedL2 ? ' active' : '';
         return `<button type="button" class="cat-chip${active}" data-l2="${escapeHtml(sub)}">${escapeHtml(sub)}</button>`;
     }).join('');
@@ -163,8 +167,17 @@ function onFormTypeChange(prefix) {
 // 绑定分类选择器点击事件（一级 / 二级 / 类型切换）
 function setupCategoryPicker(prefix) {
     document.getElementById(`${prefix}CatL1Picker`).addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.cat-chip[data-l1]');
+        const btn = ev.target.closest('.cat-chip');
         if (!btn) return;
+        if (btn.hasAttribute('data-l1-clear')) {
+            document.getElementById(`${prefix}CatL1`).value = '';
+            document.querySelectorAll(`#${prefix}CatL1Picker .cat-chip`).forEach(el => {
+                el.classList.toggle('active', el.hasAttribute('data-l1-clear'));
+            });
+            updateCatL2Panel(prefix, '', '');
+            return;
+        }
+        if (!btn.dataset.l1) return;
         const l1 = btn.dataset.l1;
         document.getElementById(`${prefix}CatL1`).value = l1;
         document.querySelectorAll(`#${prefix}CatL1Picker .cat-chip`).forEach(el => {
@@ -174,8 +187,16 @@ function setupCategoryPicker(prefix) {
     });
 
     document.getElementById(`${prefix}CatL2Picker`).addEventListener('click', (ev) => {
-        const btn = ev.target.closest('.cat-chip[data-l2]');
+        const btn = ev.target.closest('.cat-chip');
         if (!btn) return;
+        if (btn.hasAttribute('data-l2-clear')) {
+            document.getElementById(`${prefix}CatL2`).value = '';
+            document.querySelectorAll(`#${prefix}CatL2Picker .cat-chip`).forEach(el => {
+                el.classList.toggle('active', el.hasAttribute('data-l2-clear'));
+            });
+            return;
+        }
+        if (!btn.dataset.l2) return;
         const l2 = btn.dataset.l2;
         document.getElementById(`${prefix}CatL2`).value = l2;
         document.querySelectorAll(`#${prefix}CatL2Picker .cat-chip`).forEach(el => {
@@ -281,7 +302,7 @@ function renderRecords() {
                 <td>${escapeHtml(r.datetime)}</td>
                 <td><span class="type-tag ${typeClass}">${typeLabel}</span></td>
                 <td class="${amountClass}">${sign}¥${r.amount.toFixed(2)}</td>
-                <td>${escapeHtml(r.category_l1)}</td>
+                <td>${escapeHtml(r.category_l1 || '—')}</td>
                 <td>${escapeHtml(r.category_l2 || '—')}</td>
                 <td>
                     <button class="btn btn-edit" onclick="openEditModal(${r.id})">编辑</button>
@@ -349,15 +370,6 @@ async function addRecord(e) {
     const catL2 = document.getElementById('fCatL2').value;
     const note = document.getElementById('fNote').value;
 
-    // 前端校验（后端 handlers.cpp POST /api/records 也会再次校验）
-    if (!catL1) {
-        alert('请选择一级分类');
-        return;
-    }
-    if (type === 'expense' && !catL2) {
-        alert('请选择二级分类');
-        return;
-    }
     if (!datetime) {
         alert('请选择时间');
         return;
@@ -373,7 +385,7 @@ async function addRecord(e) {
             type: type,
             amount: amount,
             category_l1: catL1,
-            category_l2: type === 'income' ? '' : catL2,
+            category_l2: catL2,
             note: note
         });
         closeAddModal();      // 提交成功后关闭弹窗
@@ -442,14 +454,6 @@ async function submitEdit(e) {
     const catL2 = document.getElementById('eCatL2').value;
     const note = document.getElementById('eNote').value;
 
-    if (!catL1) {
-        alert('请选择一级分类');
-        return;
-    }
-    if (type === 'expense' && !catL2) {
-        alert('请选择二级分类');
-        return;
-    }
     if (!datetime) {
         alert('请选择时间');
         return;
@@ -463,7 +467,7 @@ async function submitEdit(e) {
             type: type,
             amount: amount,
             category_l1: catL1,
-            category_l2: type === 'income' ? '' : catL2,
+            category_l2: catL2,
             note: note
         });
         closeEditModal();
@@ -566,9 +570,9 @@ function renderStatsDayList(records, dayStr) {
         const amountClass = r.type === 'income' ? 'amount-income' : 'amount-expense';
         const sign = r.type === 'income' ? '+' : '-';
         const timePart = (r.datetime || '').length > 11 ? r.datetime.slice(11) : r.datetime;
-        const cat = r.category_l2
-            ? `${r.category_l1} / ${r.category_l2}`
-            : r.category_l1;
+        const l1 = r.category_l1 || '';
+        const l2 = r.category_l2 || '';
+        const cat = l1 && l2 ? `${l1} / ${l2}` : (l1 || l2 || '—');
         return `
             <tr>
                 <td>${escapeHtml(timePart)}</td>

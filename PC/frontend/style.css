@@ -485,6 +485,15 @@ body {
     color: #1677ff;
     font-weight: 500;
 }
+.cat-chip.cat-none {
+    color: #888;
+    background: #fff;
+}
+.cat-chip.cat-none.active {
+    border-color: #bfbfbf;
+    background: #f5f5f5;
+    color: #666;
+}
 .cat-picker-sub .cat-chip {
     font-size: 12px;
     padding: 5px 12px;

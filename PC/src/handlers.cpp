@@ -147,9 +147,9 @@ void registerRoutes(httplib::Server& svr, Database& db) {
             auto j = json::parse(req.body);
             Record r = jsonToRecord(j);
 
-            if (r.datetime.empty() || r.type.empty() || r.category_l1.empty()) {
+            if (r.datetime.empty() || r.type.empty()) {
                 res.status = 400;
-                res.set_content(errorJson("缺少必填字段: datetime, type, category_l1").dump(),
+                res.set_content(errorJson("缺少必填字段: datetime, type").dump(),
                                 "application/json");
                 return;
             }
@@ -199,9 +199,9 @@ void registerRoutes(httplib::Server& svr, Database& db) {
             Record r = jsonToRecord(j);
 
             // 与 POST 保持一致的字段校验
-            if (r.datetime.empty() || r.type.empty() || r.category_l1.empty()) {
+            if (r.datetime.empty() || r.type.empty()) {
                 res.status = 400;
-                res.set_content(errorJson("缺少必填字段: datetime, type, category_l1").dump(),
+                res.set_content(errorJson("缺少必填字段: datetime, type").dump(),
                                 "application/json");
                 return;
             }
