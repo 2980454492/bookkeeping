@@ -126,6 +126,12 @@ body {
     user-select: none;
 }
 .cat-manage-l1-row:hover { background: #f5f9ff; }
+.cat-manage-l1-row-flat {
+    cursor: default;
+}
+.cat-manage-l1-row-flat:hover {
+    background: #fff;
+}
 .cat-row-chevron {
     width: 14px;
     font-size: 12px;

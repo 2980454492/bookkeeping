@@ -527,18 +527,35 @@ function closeCatManageModal() {
 }
 
 function toggleCatManageL1(id) {
+    if (settingsCatType === 'income') return;
     catManageExpandedL1Id = catManageExpandedL1Id === id ? 0 : id;
     renderCatManageModal();
 }
 
 function renderCatManageModal() {
     const body = document.getElementById('catManageBody');
-    document.getElementById('catManageTitle').textContent = '修改分类';
+    const isExpense = settingsCatType === 'expense';
+    document.getElementById('catManageTitle').textContent =
+        isExpense ? '支出分类' : '收入分类';
 
     const cats = getCategoriesByType(settingsCatType);
     const listHtml = cats.length === 0
-        ? '<div class="cat-manage-empty">暂无一级分类</div>'
+        ? `<div class="cat-manage-empty">暂无${isExpense ? '支出' : '收入'}分类</div>`
         : `<ul class="cat-manage-groups">${cats.map(cat => {
+            if (!isExpense) {
+                return `
+                <li class="cat-manage-group">
+                    <div class="cat-manage-l1-row cat-manage-l1-row-flat">
+                        <span class="cat-row-icon">${escapeHtml(cat.icon || '📦')}</span>
+                        <span class="cat-row-name">${escapeHtml(cat.name)}</span>
+                        <span class="cat-row-btns">
+                            <button type="button" class="btn btn-sm" data-act="edit-l1" data-id="${cat.id}">编辑</button>
+                            <button type="button" class="btn btn-danger btn-sm" data-act="del-l1" data-id="${cat.id}" data-name="${escapeAttr(cat.name)}">删除</button>
+                        </span>
+                    </div>
+                </li>`;
+            }
+
             const expanded = catManageExpandedL1Id === cat.id;
             const subs = cat.subs || [];
             const subsPanel = expanded
@@ -572,21 +589,21 @@ function renderCatManageModal() {
         }).join('')}</ul>`;
 
     body.innerHTML = `
-        <p class="cat-manage-hint">点击一级分类展开二级；修改后自动保存到 categories.json</p>
         <div class="settings-type-tabs">
             <button type="button" class="btn btn-sm settings-type-btn${settingsCatType === 'expense' ? ' active' : ''}" data-ctype="expense">支出</button>
             <button type="button" class="btn btn-sm settings-type-btn${settingsCatType === 'income' ? ' active' : ''}" data-ctype="income">收入</button>
         </div>
         ${listHtml}
         <div class="cat-manage-footer">
-            <button type="button" class="btn btn-primary btn-sm" data-act="add-l1">➕ 添加一级分类</button>
+            <button type="button" class="btn btn-primary btn-sm" data-act="add-l1">➕ 添加${isExpense ? '一级' : ''}分类</button>
             <button type="button" class="btn btn-sm" data-act="reset-cats">↺ 恢复默认</button>
         </div>
     `;
 }
 
 async function settingsAddL1() {
-    const name = prompt('一级分类名称');
+    const label = settingsCatType === 'expense' ? '支出一级分类名称' : '收入分类名称';
+    const name = prompt(label);
     if (!name || !name.trim()) return;
     const icon = prompt('图标（emoji，可留空）', '📦') || '📦';
     try {
@@ -605,7 +622,8 @@ async function settingsAddL1() {
 async function settingsEditL1(id) {
     const cat = [...categories.expense, ...categories.income].find(c => c.id === id);
     if (!cat) return;
-    const name = prompt('一级分类名称', cat.name);
+    const label = cat.type === 'expense' ? '支出一级分类名称' : '收入分类名称';
+    const name = prompt(label, cat.name);
     if (name === null) return;
     if (!name.trim()) { alert('名称不能为空'); return; }
     const icon = prompt('图标（emoji）', cat.icon || '📦');
@@ -624,7 +642,11 @@ async function settingsEditL1(id) {
 }
 
 async function settingsDeleteL1(id, name) {
-    if (!confirm(`确认删除一级分类「${name}」及其下所有二级分类？`)) return;
+    const cat = [...categories.expense, ...categories.income].find(c => c.id === id);
+    const msg = cat && cat.type === 'income'
+        ? `确认删除收入分类「${name}」？`
+        : `确认删除一级分类「${name}」及其下所有二级分类？`;
+    if (!confirm(msg)) return;
     try {
         await API.del('/api/categories/l1/' + id);
         if (catManageExpandedL1Id === id) catManageExpandedL1Id = 0;
@@ -635,6 +657,11 @@ async function settingsDeleteL1(id, name) {
 }
 
 async function settingsAddL2(l1Id, l1Name) {
+    const parent = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
+    if (!parent || parent.type !== 'expense') {
+        alert('仅支出分类支持二级分类');
+        return;
+    }
     const name = prompt(`「${l1Name}」下的二级分类名称`);
     if (!name || !name.trim()) return;
     const cat = [...categories.expense, ...categories.income].find(c => c.id === l1Id);
@@ -705,15 +732,16 @@ function setupSettingsPage() {
     });
 
     document.getElementById('catManageBody').addEventListener('click', (ev) => {
-        const btn = ev.target.closest('button[data-act]');
-        if (btn) {
+        const btn = ev.target.closest('button');
+        if (btn && btn.dataset.ctype) {
+            settingsCatType = btn.dataset.ctype;
+            catManageExpandedL1Id = 0;
+            renderCatManageModal();
+            return;
+        }
+
+        if (btn && btn.dataset.act) {
             const act = btn.dataset.act;
-            if (btn.dataset.ctype) {
-                settingsCatType = btn.dataset.ctype;
-                catManageExpandedL1Id = 0;
-                renderCatManageModal();
-                return;
-            }
             if (act === 'add-l1') settingsAddL1();
             else if (act === 'edit-l1') settingsEditL1(parseInt(btn.dataset.id, 10));
             else if (act === 'del-l1') settingsDeleteL1(parseInt(btn.dataset.id, 10), btn.dataset.name);
@@ -724,7 +752,7 @@ function setupSettingsPage() {
             return;
         }
 
-        const l1Row = ev.target.closest('.cat-manage-l1-row');
+        const l1Row = ev.target.closest('.cat-manage-l1-row[data-l1-id]');
         if (l1Row) {
             toggleCatManageL1(parseInt(l1Row.dataset.l1Id, 10));
         }

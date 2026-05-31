@@ -102,6 +102,7 @@ public:
 
     // ── 分类（用户可增删改；reset 从模板文件恢复）────────────
     std::vector<CategoryL1> getCategories(const std::string& type = ""); // type 空=全部
+    std::optional<CategoryL1> getCategoryL1ById(int id);
     int  createCategoryL1(const CategoryL1& cat);
     bool updateCategoryL1(int id, const CategoryL1& cat);
     bool deleteCategoryL1(int id);         // 级联删除其下 category_l2

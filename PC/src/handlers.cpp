@@ -387,6 +387,13 @@ void registerRoutes(httplib::Server& svr, Database& db, const std::string& categ
                 return;
             }
 
+            auto l1 = db.getCategoryL1ById(cat.l1_id);
+            if (!l1 || l1->type != "expense") {
+                res.status = 400;
+                res.set_content(errorJson("仅支出分类可添加二级分类").dump(), "application/json");
+                return;
+            }
+
             int id = db.createCategoryL2(cat);
             cat.id = id;
             if (!persistCategoriesFile(db, g_categories_json_path)) {
@@ -417,6 +424,13 @@ void registerRoutes(httplib::Server& svr, Database& db, const std::string& categ
             if (cat.name.empty()) {
                 res.status = 400;
                 res.set_content(errorJson("name 为必填字段").dump(), "application/json");
+                return;
+            }
+
+            auto l1 = db.getCategoryL1ById(cat.l1_id);
+            if (!l1 || l1->type != "expense") {
+                res.status = 400;
+                res.set_content(errorJson("仅支出分类可设置二级分类").dump(), "application/json");
                 return;
             }
 

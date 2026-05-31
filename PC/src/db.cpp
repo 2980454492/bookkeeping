@@ -443,6 +443,13 @@ std::vector<CategoryL1> Database::getCategories(const std::string& type) {
     return result;
 }
 
+std::optional<CategoryL1> Database::getCategoryL1ById(int id) {
+    for (const auto& c : getCategories("")) {
+        if (c.id == id) return c;
+    }
+    return std::nullopt;
+}
+
 int Database::createCategoryL1(const CategoryL1& cat) {
     std::string sql = "INSERT INTO category_l1 (name, type, icon, sort_order) VALUES ('"
                     + escape(cat.name) + "', '" + escape(cat.type) + "', '"
@@ -521,7 +528,7 @@ bool Database::exportCategoriesToJson(const std::string& json_path) const {
 
     for (const auto& cat : all) {
         json item = {{"name", cat.name}, {"icon", cat.icon}};
-        if (!cat.subcategories.empty()) {
+        if (cat.type == "expense" && !cat.subcategories.empty()) {
             item["subcategories"] = cat.subcategories;
         }
         if (cat.type == "expense") {
