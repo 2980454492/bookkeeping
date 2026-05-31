@@ -16,30 +16,43 @@
             <span class="version">v1.0</span>
         </header>
 
-        <!-- 汇总卡片 -->
+        <!-- 汇总卡片（按自然月/年统计，不受列表筛选影响） -->
         <div class="summary">
-            <div class="card income-card">
-                <div class="card-label">总收入</div>
-                <div class="card-value" id="sumIncome">¥0.00</div>
+            <div class="card expense-card">
+                <div class="card-label">该月总支出</div>
+                <div class="card-value" id="sumMonthExpense">¥0.00</div>
             </div>
             <div class="card expense-card">
-                <div class="card-label">总支出</div>
-                <div class="card-value" id="sumExpense">¥0.00</div>
+                <div class="card-label">上个月总支出</div>
+                <div class="card-value" id="sumLastMonthExpense">¥0.00</div>
             </div>
-            <div class="card balance-card">
-                <div class="card-label">结余</div>
-                <div class="card-value" id="sumBalance">¥0.00</div>
+            <div class="card expense-card">
+                <div class="card-label">该年总支出</div>
+                <div class="card-value" id="sumYearExpense">¥0.00</div>
             </div>
-        </div>
-
-        <!-- 新增记录入口：点击打开弹窗 -->
-        <div class="section add-entry">
-            <button type="button" class="btn btn-primary" id="btnOpenAdd">➕ 添加记录</button>
+            <div class="card income-card">
+                <div class="card-label">该年总收入</div>
+                <div class="card-value" id="sumYearIncome">¥0.00</div>
+            </div>
+            <div class="card expense-card">
+                <div class="card-label">去年总支出</div>
+                <div class="card-value" id="sumLastYearExpense">¥0.00</div>
+            </div>
+            <div class="card income-card">
+                <div class="card-label">去年总收入</div>
+                <div class="card-value" id="sumLastYearIncome">¥0.00</div>
+            </div>
         </div>
 
         <!-- 筛选与记录列表 -->
         <div class="section">
             <h2>记录列表</h2>
+
+            <!-- 新增记录入口 -->
+            <div class="add-entry">
+                <p class="add-entry-hint">点击添加记录，开始记账吧！</p>
+                <button type="button" class="btn btn-primary" id="btnOpenAdd">➕ 添加记录</button>
+            </div>
 
             <!-- 筛选面板：类型 / 分类 / 日期区间 / 金额区间 / 关键字 / 排序 -->
             <h3 class="panel-title">筛选</h3>

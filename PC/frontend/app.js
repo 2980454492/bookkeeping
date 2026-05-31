@@ -509,22 +509,59 @@ function renderRecords() {
 
 // ── 汇总统计 ────────────────────────────────────────────────────────
 
-// 计算并更新页面顶部的「总收入 / 总支出 / 结余」卡片
+function formatMoney(amount) {
+    return `¥${amount.toFixed(2)}`;
+}
+
+function sumRecordsInRange(records, dateFrom, dateTo, type) {
+    let sum = 0;
+    for (const r of records) {
+        const d = recordDateKey(r.datetime);
+        if (!d || d < dateFrom || d > dateTo) continue;
+        if (r.type === type) sum += r.amount;
+    }
+    return sum;
+}
+
+// 更新页面顶部汇总卡片（该月/上月/今年/去年收支）
 async function updateSummary() {
     try {
-        let totalIncome = 0, totalExpense = 0;
-        // 拉取大量记录用于汇总（不受筛选栏影响；page_size=10000 近似全量）
-        const allData = await API.get('/api/records?page=1&page_size=10000');
-        for (const r of (allData.records || [])) {
-            if (r.type === 'income') totalIncome += r.amount;
-            else totalExpense += r.amount;
-        }
-        document.getElementById('sumIncome').textContent = `¥${totalIncome.toFixed(2)}`;
-        document.getElementById('sumExpense').textContent = `¥${totalExpense.toFixed(2)}`;
-        const balance = totalIncome - totalExpense;
-        const balEl = document.getElementById('sumBalance');
-        balEl.textContent = `${balance >= 0 ? '+' : ''}¥${balance.toFixed(2)}`;
-        balEl.style.color = balance >= 0 ? '#52c41a' : '#ff4d4f';  // 正数绿色，负数红色
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+
+        const thisMonthFrom = toDateInputValue(new Date(y, m, 1));
+        const thisMonthTo = toDateInputValue(new Date(y, m + 1, 0));
+        const lastMonthFrom = toDateInputValue(new Date(y, m - 1, 1));
+        const lastMonthTo = toDateInputValue(new Date(y, m, 0));
+        const thisYearFrom = toDateInputValue(new Date(y, 0, 1));
+        const thisYearTo = toDateInputValue(new Date(y, 11, 31));
+        const lastYearFrom = toDateInputValue(new Date(y - 1, 0, 1));
+        const lastYearTo = toDateInputValue(new Date(y - 1, 11, 31));
+
+        const params = new URLSearchParams({
+            date_from: lastYearFrom,
+            date_to: thisYearTo,
+            page: '1',
+            page_size: '10000',
+            sort_by: 'datetime',
+            sort_order: 'asc'
+        });
+        const data = await API.get('/api/records?' + params.toString());
+        const records = data.records || [];
+
+        document.getElementById('sumMonthExpense').textContent =
+            formatMoney(sumRecordsInRange(records, thisMonthFrom, thisMonthTo, 'expense'));
+        document.getElementById('sumLastMonthExpense').textContent =
+            formatMoney(sumRecordsInRange(records, lastMonthFrom, lastMonthTo, 'expense'));
+        document.getElementById('sumYearExpense').textContent =
+            formatMoney(sumRecordsInRange(records, thisYearFrom, thisYearTo, 'expense'));
+        document.getElementById('sumYearIncome').textContent =
+            formatMoney(sumRecordsInRange(records, thisYearFrom, thisYearTo, 'income'));
+        document.getElementById('sumLastYearExpense').textContent =
+            formatMoney(sumRecordsInRange(records, lastYearFrom, lastYearTo, 'expense'));
+        document.getElementById('sumLastYearIncome').textContent =
+            formatMoney(sumRecordsInRange(records, lastYearFrom, lastYearTo, 'income'));
     } catch (e) {
         console.error('[App] 更新汇总失败:', e);
     }

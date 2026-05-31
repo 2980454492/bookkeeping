@@ -521,21 +521,47 @@ body {
 .summary {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    gap: 12px;
     margin-bottom: 24px;
 }
-.card {
+.summary .card {
     background: #fff;
     border-radius: 10px;
-    padding: 20px;
+    padding: 20px 16px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     text-align: center;
 }
-.card-label { font-size: 13px; color: #888; margin-bottom: 6px; }
-.card-value { font-size: 26px; font-weight: 700; }
-.income-card  .card-value { color: #52c41a; }
-.expense-card .card-value { color: #ff4d4f; }
-.balance-card .card-value { color: #1677ff; }
+.summary .card-label {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+.summary .card-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.summary .income-card  .card-value { color: #52c41a; }
+.summary .expense-card .card-value { color: #ff4d4f; }
+
+/* ── 添加记录入口（列表下方）────────────────────────── */
+.add-entry {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed #e8e8e8;
+}
+.add-entry-hint {
+    font-size: 14px;
+    color: #999;
+    margin: 0;
+}
+.add-entry .btn {
+    flex-shrink: 0;
+    min-width: 140px;
+    padding: 10px 24px;
+    font-size: 15px;
+}
 
 /* ── 区块容器 ────────────────────────────────────────── */
 .section {
@@ -885,8 +911,13 @@ tbody tr:hover { background: #f5f9ff; }
 }
 
 /* ── 响应式布局 ──────────────────────────────────────── */
+@media (max-width: 900px) {
+    .summary { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 768px) {
     .summary { grid-template-columns: 1fr; }
+    .summary .card-label { font-size: 15px; }
+    .summary .card-value { font-size: 26px; }
     .add-form .form-row { flex-direction: column; }
     #app { padding: 12px 12px 88px; }
     .cal-cell { min-height: 58px; font-size: 10px; }
