@@ -15,6 +15,7 @@ set(SOURCES
     src/main.cpp
     src/db.cpp
     src/handlers.cpp
+    src/export_util.cpp
 )
 
 # ── 可执行文件 ──────────────────────────────────────────────────

@@ -232,8 +232,119 @@
                     </span>
                     <span class="settings-menu-arrow">›</span>
                 </button>
+                <button type="button" class="settings-menu-item" id="btnOpenExport">
+                    <span class="settings-menu-icon">📤</span>
+                    <span class="settings-menu-text">
+                        <span class="settings-menu-label">导出数据</span>
+                        <span class="settings-menu-desc">按筛选条件导出为文件</span>
+                    </span>
+                    <span class="settings-menu-arrow">›</span>
+                </button>
             </div>
         </main>
+
+        <!-- 导出数据弹窗 -->
+        <div id="exportModal" class="modal-overlay" style="display:none;">
+            <div class="modal modal-export">
+                <div class="modal-header">
+                    <h2>导出数据</h2>
+                    <button type="button" class="modal-close" id="exportClose">&times;</button>
+                </div>
+                <div class="export-body">
+                    <div class="export-file-row">
+                        <label for="exportFilename">文件名</label>
+                        <input type="text" id="exportFilename" placeholder="例如：2026年5月账单" maxlength="80">
+                    </div>
+                    <div class="export-file-row">
+                        <label for="exportFormat">格式</label>
+                        <select id="exportFormat">
+                            <option value="csv">CSV（Excel 可打开）</option>
+                            <option value="xlsx">Excel (.xlsx)</option>
+                            <option value="txt">纯文本 (.txt)</option>
+                            <option value="json">JSON (.json)</option>
+                            <option value="tsv">TSV 制表符分隔</option>
+                        </select>
+                    </div>
+                    <p class="export-hint">默认导出当月全部收支；可调整筛选，或点「同步记账页筛选」。文件保存在应用根目录。</p>
+
+                    <h3 class="panel-title">筛选</h3>
+                    <div class="filters export-filters">
+                        <div class="filter-item">
+                            <label for="expFilterType">类型</label>
+                            <select id="expFilterType">
+                                <option value="">全部类型</option>
+                                <option value="expense">仅支出</option>
+                                <option value="income">仅收入</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterCatL1">一级分类</label>
+                            <select id="expFilterCatL1">
+                                <option value="">全部分类</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterCatL2">二级分类</label>
+                            <select id="expFilterCatL2">
+                                <option value="">全部二级</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterAmountMin">最小金额</label>
+                            <input type="number" id="expFilterAmountMin" placeholder="不限" step="0.01" min="0">
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterAmountMax">最大金额</label>
+                            <input type="number" id="expFilterAmountMax" placeholder="不限" step="0.01" min="0">
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterDateFrom">开始日期</label>
+                            <input type="date" id="expFilterDateFrom">
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterDateTo">结束日期</label>
+                            <input type="date" id="expFilterDateTo">
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterKeyword">关键字</label>
+                            <input type="text" id="expFilterKeyword" placeholder="备注/分类/金额" maxlength="50">
+                        </div>
+                        <div class="quick-dates">
+                            <button type="button" class="btn btn-sm" data-exp-range="thisMonth">本月</button>
+                            <button type="button" class="btn btn-sm" data-exp-range="lastMonth">上月</button>
+                            <button type="button" class="btn btn-sm" data-exp-range="thisYear">今年</button>
+                            <button type="button" class="btn btn-sm" data-exp-range="all">全部</button>
+                        </div>
+                    </div>
+
+                    <hr class="filter-divider">
+
+                    <h3 class="panel-title">排序</h3>
+                    <div class="filters sort-panel export-filters">
+                        <div class="filter-item">
+                            <label for="expFilterSortBy">排序字段</label>
+                            <select id="expFilterSortBy">
+                                <option value="datetime">按时间</option>
+                                <option value="amount">按金额</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="expFilterSortOrder">排序方向</label>
+                            <select id="expFilterSortOrder">
+                                <option value="desc">降序</option>
+                                <option value="asc">升序</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions export-actions">
+                        <button type="button" class="btn btn-sm" id="exportSyncFilters">↺ 同步记账页筛选</button>
+                        <button type="button" class="btn btn-sm" id="exportCancel">取消</button>
+                        <button type="button" class="btn btn-primary" id="exportSubmit">导出</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- 修改分类弹窗（分级：一级 → 二级） -->
         <div id="catManageModal" class="modal-overlay" style="display:none;">

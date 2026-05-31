@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
 
     // 收支记录、分类、统计、导入导出等 REST 接口（实现见 handlers.cpp）
     const std::string categories_json_path = (root / "categories.json").string();
-    registerRoutes(svr, db, categories_json_path);
+    registerRoutes(svr, db, categories_json_path, root.string());
 
     // ── 阻塞监听 ─────────────────────────────────────────────────
     // 仅绑定回环地址，不对外网暴露；适合本机浏览器 + run.sh 自动打开页面的用法

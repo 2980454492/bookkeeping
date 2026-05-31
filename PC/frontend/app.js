@@ -236,38 +236,97 @@ function updateFilterL2Select() {
     }
 }
 
+// ── 筛选条件（记账页 / 导出弹窗共用逻辑）────────────────────────────
+
+const RECORD_FILTER_IDS = {
+    type: 'filterType',
+    catL1: 'filterCatL1',
+    catL2: 'filterCatL2',
+    dateFrom: 'filterDateFrom',
+    dateTo: 'filterDateTo',
+    amountMin: 'filterAmountMin',
+    amountMax: 'filterAmountMax',
+    keyword: 'filterKeyword',
+    sortBy: 'filterSortBy',
+    sortOrder: 'filterSortOrder'
+};
+
+const EXPORT_FILTER_IDS = {
+    type: 'expFilterType',
+    catL1: 'expFilterCatL1',
+    catL2: 'expFilterCatL2',
+    dateFrom: 'expFilterDateFrom',
+    dateTo: 'expFilterDateTo',
+    amountMin: 'expFilterAmountMin',
+    amountMax: 'expFilterAmountMax',
+    keyword: 'expFilterKeyword',
+    sortBy: 'expFilterSortBy',
+    sortOrder: 'expFilterSortOrder'
+};
+
+function readFilterFields(ids) {
+    return {
+        type: document.getElementById(ids.type).value,
+        catL1: document.getElementById(ids.catL1).value,
+        catL2: document.getElementById(ids.catL2).value,
+        dateFrom: document.getElementById(ids.dateFrom).value,
+        dateTo: document.getElementById(ids.dateTo).value,
+        amountMin: document.getElementById(ids.amountMin).value,
+        amountMax: document.getElementById(ids.amountMax).value,
+        keyword: document.getElementById(ids.keyword).value.trim(),
+        sortBy: document.getElementById(ids.sortBy).value,
+        sortOrder: document.getElementById(ids.sortOrder).value
+    };
+}
+
+function applyFilterFields(ids, f) {
+    document.getElementById(ids.type).value = f.type || '';
+    document.getElementById(ids.catL1).value = f.catL1 || '';
+    if (ids === RECORD_FILTER_IDS) updateFilterL2Select();
+    else updateExportFilterL2Select();
+    document.getElementById(ids.catL2).value = f.catL2 || '';
+    document.getElementById(ids.dateFrom).value = f.dateFrom || '';
+    document.getElementById(ids.dateTo).value = f.dateTo || '';
+    document.getElementById(ids.amountMin).value = f.amountMin || '';
+    document.getElementById(ids.amountMax).value = f.amountMax || '';
+    document.getElementById(ids.keyword).value = f.keyword || '';
+    document.getElementById(ids.sortBy).value = f.sortBy || 'datetime';
+    document.getElementById(ids.sortOrder).value = f.sortOrder || 'desc';
+}
+
+function buildFilterQueryObject(f) {
+    const q = {
+        sort_by: f.sortBy || 'datetime',
+        sort_order: f.sortOrder || 'desc'
+    };
+    if (f.type) q.type = f.type;
+    if (f.catL1) q.cat_l1 = f.catL1;
+    if (f.catL2) q.cat_l2 = f.catL2;
+    if (f.dateFrom) q.date_from = f.dateFrom;
+    if (f.dateTo) q.date_to = f.dateTo;
+    if (f.amountMin !== '') q.amount_min = parseFloat(f.amountMin);
+    if (f.amountMax !== '') q.amount_max = parseFloat(f.amountMax);
+    if (f.keyword) q.keyword = f.keyword;
+    return q;
+}
+
+function buildFilterSearchParams(f, page, pageSize) {
+    const params = new URLSearchParams();
+    const q = buildFilterQueryObject(f);
+    for (const [k, v] of Object.entries(q)) {
+        params.set(k, String(v));
+    }
+    params.set('page', page);
+    params.set('page_size', pageSize);
+    return params;
+}
+
 // ── 加载记录 ────────────────────────────────────────────────────────
 
 // 从后端拉取记录列表，更新缓存并刷新表格和汇总
 async function loadRecords() {
-    // URLSearchParams：构建 query string，等价于 C++ 里拼接 ?key=value&...
-    const params = new URLSearchParams();
-
-    // 读取筛选面板各控件的值（空值表示该维度不参与筛选）
-    const filterType    = document.getElementById('filterType').value;
-    const filterCatL1   = document.getElementById('filterCatL1').value;
-    const filterCatL2   = document.getElementById('filterCatL2').value;
-    const dateFrom      = document.getElementById('filterDateFrom').value;
-    const dateTo        = document.getElementById('filterDateTo').value;
-    const amountMin     = document.getElementById('filterAmountMin').value;
-    const amountMax     = document.getElementById('filterAmountMax').value;
-    const keyword       = document.getElementById('filterKeyword').value.trim();
-    const sortBy        = document.getElementById('filterSortBy').value;
-    const sortOrder     = document.getElementById('filterSortOrder').value;
-
-    if (filterType)  params.set('type', filterType);       // 对应后端 parseRecordQuery().type
-    if (filterCatL1) params.set('cat_l1', filterCatL1);    // 对应后端 parseRecordQuery().cat_l1
-    if (filterCatL2) params.set('cat_l2', filterCatL2);    // 对应后端 parseRecordQuery().cat_l2
-    if (dateFrom)    params.set('date_from', dateFrom);    // 精确到天，后端自动补全为当天 00:00
-    if (dateTo)      params.set('date_to', dateTo);        // 后端自动补全为当天 23:59
-    if (amountMin !== '') params.set('amount_min', amountMin);
-    if (amountMax !== '') params.set('amount_max', amountMax);
-    if (keyword)     params.set('keyword', keyword);       // 模糊匹配备注/分类/金额
-
-    params.set('page', currentPage);
-    params.set('page_size', PAGE_SIZE);
-    params.set('sort_by', sortBy || 'datetime');
-    params.set('sort_order', sortOrder || 'desc');
+    const f = readFilterFields(RECORD_FILTER_IDS);
+    const params = buildFilterSearchParams(f, currentPage, PAGE_SIZE);
 
     try {
         const data = await API.get('/api/records?' + params.toString()); // → db.queryRecords()
@@ -724,7 +783,105 @@ function escapeAttr(str) {
         .replace(/</g, '&lt;');
 }
 
+// ── 导出数据 ────────────────────────────────────────────────────────
+
+function populateExportFilterCategorySelect() {
+    const sel = document.getElementById('expFilterCatL1');
+    sel.innerHTML = '<option value="">全部分类</option>';
+    for (const cat of [...categories.expense, ...categories.income]) {
+        sel.innerHTML += `<option value="${escapeHtml(cat.name)}">${cat.name}</option>`;
+    }
+}
+
+function updateExportFilterL2Select() {
+    const l1 = document.getElementById('expFilterCatL1').value;
+    const sel = document.getElementById('expFilterCatL2');
+    const subs = getSubcategories(l1);
+    sel.innerHTML = '<option value="">全部二级</option>';
+    for (const sub of subs) {
+        sel.innerHTML += `<option value="${escapeHtml(sub)}">${sub}</option>`;
+    }
+}
+
+function syncExportFiltersFromRecordsPage() {
+    applyFilterFields(EXPORT_FILTER_IDS, readFilterFields(RECORD_FILTER_IDS));
+}
+
+/** 导出弹窗默认筛选：全部类型/分类、当月日期、金额不限 */
+function applyDefaultExportFilters() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    applyFilterFields(EXPORT_FILTER_IDS, {
+        type: '',
+        catL1: '',
+        catL2: '',
+        dateFrom: toDateInputValue(new Date(y, m, 1)),
+        dateTo: toDateInputValue(new Date(y, m + 1, 0)),
+        amountMin: '',
+        amountMax: '',
+        keyword: '',
+        sortBy: 'datetime',
+        sortOrder: 'desc'
+    });
+}
+
+function openExportModal() {
+    populateExportFilterCategorySelect();
+    applyDefaultExportFilters();
+    const now = new Date();
+    const defaultName = `记账导出_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    document.getElementById('exportFilename').value = defaultName;
+    document.getElementById('exportModal').style.display = 'flex';
+}
+
+function closeExportModal() {
+    document.getElementById('exportModal').style.display = 'none';
+}
+
+async function submitExport() {
+    const filename = document.getElementById('exportFilename').value.trim();
+    if (!filename) {
+        alert('请输入文件名');
+        return;
+    }
+    const format = document.getElementById('exportFormat').value;
+    const f = readFilterFields(EXPORT_FILTER_IDS);
+    const payload = {
+        filename,
+        format,
+        ...buildFilterQueryObject(f)
+    };
+
+    try {
+        const data = await API.post('/api/records/export', payload);
+        const matched = data.total_matched != null ? data.total_matched : data.count;
+        alert(`导出成功\n文件：${data.filename}\n路径：${data.path}\n导出 ${data.count} 条（筛选命中 ${matched} 条）`);
+        closeExportModal();
+    } catch (e) {
+        let msg = e.message || String(e);
+        try {
+            const err = JSON.parse(msg);
+            if (err.error) msg = err.error;
+        } catch (_) { /* 非 JSON */ }
+        alert('导出失败：' + msg);
+    }
+}
+
 function setupSettingsPage() {
+    document.getElementById('btnOpenExport').addEventListener('click', openExportModal);
+    document.getElementById('exportClose').addEventListener('click', closeExportModal);
+    document.getElementById('exportCancel').addEventListener('click', closeExportModal);
+    document.getElementById('exportSubmit').addEventListener('click', submitExport);
+    document.getElementById('exportSyncFilters').addEventListener('click', syncExportFiltersFromRecordsPage);
+    document.getElementById('exportModal').addEventListener('click', (ev) => {
+        if (ev.target.id === 'exportModal') closeExportModal();
+    });
+    document.getElementById('expFilterCatL1').addEventListener('change', updateExportFilterL2Select);
+    document.querySelectorAll('[data-exp-range]').forEach(btn => {
+        btn.addEventListener('click', () => setExportQuickDateRange(btn.dataset.expRange));
+    });
+
     document.getElementById('btnOpenCatManage').addEventListener('click', openCatManageModal);
     document.getElementById('catManageClose').addEventListener('click', closeCatManageModal);
     document.getElementById('catManageModal').addEventListener('click', (ev) => {
@@ -1139,20 +1296,18 @@ function toDateInputValue(d) {
     return local.toISOString().slice(0, 10);
 }
 
-// 快捷日期：根据预设区间设置开始/结束日期输入框，并立即查询
-function setQuickDateRange(range) {
-    const fromEl = document.getElementById('filterDateFrom');
-    const toEl = document.getElementById('filterDateTo');
+// 快捷日期：根据预设区间设置开始/结束日期输入框
+function applyQuickDateRangeToElements(fromEl, toEl, range) {
     const now = new Date();
     const y = now.getFullYear();
-    const m = now.getMonth();  // 0 ~ 11
+    const m = now.getMonth();
 
     if (range === 'all') {
         fromEl.value = '';
         toEl.value = '';
     } else if (range === 'thisMonth') {
         fromEl.value = toDateInputValue(new Date(y, m, 1));
-        toEl.value = toDateInputValue(new Date(y, m + 1, 0));  // 下月第 0 天 = 本月最后一天
+        toEl.value = toDateInputValue(new Date(y, m + 1, 0));
     } else if (range === 'lastMonth') {
         fromEl.value = toDateInputValue(new Date(y, m - 1, 1));
         toEl.value = toDateInputValue(new Date(y, m, 0));
@@ -1160,9 +1315,22 @@ function setQuickDateRange(range) {
         fromEl.value = toDateInputValue(new Date(y, 0, 1));
         toEl.value = toDateInputValue(new Date(y, 11, 31));
     }
+}
 
+function setQuickDateRange(range) {
+    const fromEl = document.getElementById('filterDateFrom');
+    const toEl = document.getElementById('filterDateTo');
+    applyQuickDateRangeToElements(fromEl, toEl, range);
     currentPage = 1;
     loadRecords();
+}
+
+function setExportQuickDateRange(range) {
+    applyQuickDateRangeToElements(
+        document.getElementById('expFilterDateFrom'),
+        document.getElementById('expFilterDateTo'),
+        range
+    );
 }
 
 // 重置全部筛选条件，回到默认视图

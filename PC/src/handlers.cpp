@@ -16,16 +16,55 @@
 //   POST   /api/categories/l1
 //   DELETE /api/categories/l1/:id
 //   POST   /api/categories/reset     从 cwd 下 categories.json 恢复（路径见注）
+//   POST   /api/records/export       按筛选条件导出到应用根目录
 
 #include "handlers.h"
+#include "export_util.h"
 
 #include <json.hpp>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 
 using json = nlohmann::json;
 
 // ── 查询参数 → RecordQuery ─────────────────────────────────────────
+
+static void fillRecordQueryFromJson(RecordQuery& q, const json& j) {
+    if (j.contains("keyword") && j["keyword"].is_string())
+        q.keyword = j["keyword"].get<std::string>();
+    if (j.contains("type") && j["type"].is_string())
+        q.type = j["type"].get<std::string>();
+    if (j.contains("cat_l1") && j["cat_l1"].is_string())
+        q.cat_l1 = j["cat_l1"].get<std::string>();
+    if (j.contains("cat_l2") && j["cat_l2"].is_string())
+        q.cat_l2 = j["cat_l2"].get<std::string>();
+    if (j.contains("date_from") && j["date_from"].is_string())
+        q.date_from = j["date_from"].get<std::string>();
+    if (j.contains("date_to") && j["date_to"].is_string())
+        q.date_to = j["date_to"].get<std::string>();
+    if (j.contains("amount_min")) {
+        if (j["amount_min"].is_number())
+            q.amount_min = j["amount_min"].get<double>();
+        else if (j["amount_min"].is_string() && !j["amount_min"].get<std::string>().empty())
+            q.amount_min = std::stod(j["amount_min"].get<std::string>());
+    }
+    if (j.contains("amount_max")) {
+        if (j["amount_max"].is_number())
+            q.amount_max = j["amount_max"].get<double>();
+        else if (j["amount_max"].is_string() && !j["amount_max"].get<std::string>().empty())
+            q.amount_max = std::stod(j["amount_max"].get<std::string>());
+    }
+    if (j.contains("sort_by") && j["sort_by"].is_string())
+        q.sort_by = j["sort_by"].get<std::string>();
+    if (j.contains("sort_order") && j["sort_order"].is_string())
+        q.sort_order = j["sort_order"].get<std::string>();
+    if (j.contains("page") && j["page"].is_number_integer())
+        q.page = j["page"].get<int>();
+    if (j.contains("page_size") && j["page_size"].is_number_integer())
+        q.page_size = j["page_size"].get<int>();
+}
 
 static RecordQuery parseRecordQuery(const httplib::Request& req) {
     RecordQuery q;
@@ -98,6 +137,7 @@ static bool persistCategoriesFile(Database& db, const std::string& path) {
 
 // 路由 lambda 异步执行，须保存路径副本（不能引用 main 传入的临时 string）
 static std::string g_categories_json_path;
+static std::string g_app_root_path;
 
 static json errorJson(const std::string& msg) {
     return {{"error", msg}};
@@ -105,8 +145,11 @@ static json errorJson(const std::string& msg) {
 
 // ── 路由注册 ───────────────────────────────────────────────────────
 
-void registerRoutes(httplib::Server& svr, Database& db, const std::string& categories_json_path) {
+void registerRoutes(httplib::Server& svr, Database& db,
+                    const std::string& categories_json_path,
+                    const std::string& app_root_path) {
     g_categories_json_path = categories_json_path;
+    g_app_root_path = app_root_path;
 
     // ── 健康检查（前端或监控可用来判断服务是否存活）────────────
     svr.Get("/api/health", [](const httplib::Request&, httplib::Response& res) {
@@ -133,6 +176,49 @@ void registerRoutes(httplib::Server& svr, Database& db, const std::string& categ
                 {"page_size", result.page_size}
             };
             res.set_content(body.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // POST /api/records/export — 按筛选条件导出到应用根目录
+    svr.Post("/api/records/export", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto j = json::parse(req.body);
+            std::string filename = j.value("filename", "");
+            std::string format = j.value("format", "csv");
+            if (filename.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("filename 为必填字段").dump(), "application/json");
+                return;
+            }
+
+            RecordQuery q;
+            fillRecordQueryFromJson(q, j);
+            q.page = 1;
+            q.page_size = 1000000;
+
+            auto result = db.queryRecords(q);
+            auto export_result = exportRecordsToFile(
+                g_app_root_path, filename, format, result.records);
+
+            if (!export_result.ok) {
+                res.status = 400;
+                res.set_content(errorJson(export_result.error).dump(), "application/json");
+                return;
+            }
+
+            json body = {
+                {"ok", true},
+                {"filename", export_result.filename},
+                {"path", export_result.filepath.string()},
+                {"count", export_result.count},
+                {"total_matched", result.total}
+            };
+            res.set_content(body.dump(), "application/json");
+            std::cout << "[Export] 已导出 " << export_result.count << " 条 → "
+                      << export_result.filepath << std::endl;
         } catch (const std::exception& e) {
             res.status = 500;
             res.set_content(errorJson(e.what()).dump(), "application/json");

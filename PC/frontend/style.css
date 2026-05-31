@@ -53,6 +53,9 @@ body {
 
 /* ── 设置页菜单 ───────────────────────────────────────── */
 .settings-menu { padding: 8px; }
+.settings-menu-item + .settings-menu-item {
+    margin-top: 10px;
+}
 .settings-menu-item {
     display: flex;
     align-items: center;
@@ -84,6 +87,48 @@ body {
 .settings-menu-arrow {
     font-size: 22px;
     color: #bbb;
+}
+
+/* ── 导出弹窗 ───────────────────────────────────────── */
+.modal-export { max-width: 560px; max-height: 90vh; }
+.export-body {
+    padding: 0 16px 16px;
+    overflow-y: auto;
+    max-height: calc(90vh - 56px);
+}
+.export-file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.export-file-row label {
+    flex: 0 0 56px;
+    font-size: 14px;
+    color: #555;
+}
+.export-file-row input,
+.export-file-row select {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.export-hint {
+    font-size: 13px;
+    color: #888;
+    margin: 0 0 14px;
+    line-height: 1.5;
+}
+.export-filters { margin-bottom: 0; }
+.export-actions {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #eee;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 /* ── 修改分类弹窗 ─────────────────────────────────────── */
