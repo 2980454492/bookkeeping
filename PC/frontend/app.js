@@ -20,6 +20,15 @@ let currentPage = 1;
 // 每页记录条数，与后端 RecordQuery.page_size 默认值一致
 const PAGE_SIZE = 50;
 
+// 统计页：选中的日期、当前查看的年/月（0-11）
+let statsSelectedDay = '';
+let statsViewYear = 0;
+let statsViewMonth = 0;
+
+// 统计页缓存：当前查看月 / 当年记录
+let statsMonthRecords = [];
+let statsYearRecords = [];
+
 // ── API 请求封装（HTTP 客户端，类似封装好的 REST SDK） ─────────────
 // fetch 是浏览器内置的 HTTP 函数；async/await 用于等待异步网络响应。
 const API = {
@@ -367,6 +376,7 @@ async function addRecord(e) {
         });
         closeAddModal();      // 提交成功后关闭弹窗
         await loadRecords();  // 重新拉取列表，刷新表格
+        refreshStatsIfVisible();
     } catch (e) {
         alert('添加失败: ' + e.message);
     }
@@ -381,6 +391,7 @@ async function deleteRecord(id) {
     try {
         await API.del('/api/records/' + id);  // → handlers.cpp → db.deleteRecord()
         await loadRecords();
+        refreshStatsIfVisible();
     } catch (e) {
         alert('删除失败: ' + e.message);
     }
@@ -455,6 +466,7 @@ async function submitEdit(e) {
         });
         closeEditModal();
         await loadRecords();
+        refreshStatsIfVisible();
     } catch (e) {
         alert('保存失败: ' + e.message);
     }
@@ -467,6 +479,390 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;       // 以纯文本方式赋值
     return div.innerHTML;        // 读取时自动转义为 &lt; &gt; 等
+}
+
+// ── 底部导航与统计页 ────────────────────────────────────────────────
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-pane').forEach(el => {
+        el.classList.toggle('active', el.id === `pane-${tab}`);
+    });
+    document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === tab);
+    });
+    if (tab === 'stats') loadStatsPage();
+}
+
+// 拉取指定日期区间内的全部记录（用于统计聚合）
+async function fetchRecordsInRange(dateFrom, dateTo) {
+    const params = new URLSearchParams({
+        date_from: dateFrom,
+        date_to: dateTo,
+        page: '1',
+        page_size: '10000',
+        sort_by: 'datetime',
+        sort_order: 'asc'
+    });
+    const data = await API.get('/api/records?' + params.toString());
+    return data.records || [];
+}
+
+// 从记录 datetime 字段提取日期部分 YYYY-MM-DD
+function recordDateKey(datetime) {
+    return (datetime || '').slice(0, 10);
+}
+
+// 按日期聚合收入/支出
+function aggregateByDay(records) {
+    const map = {};
+    for (const r of records) {
+        const key = recordDateKey(r.datetime);
+        if (!key) continue;
+        if (!map[key]) map[key] = { income: 0, expense: 0 };
+        if (r.type === 'income') map[key].income += r.amount;
+        else map[key].expense += r.amount;
+    }
+    return map;
+}
+
+// 按月份聚合（key: YYYY-MM）
+function aggregateByMonth(records) {
+    const map = {};
+    for (const r of records) {
+        const key = recordDateKey(r.datetime).slice(0, 7);
+        if (!key || key.length < 7) continue;
+        if (!map[key]) map[key] = { income: 0, expense: 0 };
+        if (r.type === 'income') map[key].income += r.amount;
+        else map[key].expense += r.amount;
+    }
+    return map;
+}
+
+// 渲染统计页顶部：选中日期的记录列表
+function renderStatsDayList(records, dayStr) {
+    const dayRecords = records.filter(r => recordDateKey(r.datetime) === dayStr);
+    let income = 0, expense = 0;
+    for (const r of dayRecords) {
+        if (r.type === 'income') income += r.amount;
+        else expense += r.amount;
+    }
+
+    const isToday = dayStr === toDateInputValue(new Date());
+    document.getElementById('statsDayTitle').textContent =
+        isToday ? '今日记录' : `${dayStr} 记录`;
+    document.getElementById('statsDayIncome').textContent = `¥${income.toFixed(2)}`;
+    document.getElementById('statsDayExpense').textContent = `¥${expense.toFixed(2)}`;
+
+    const tbody = document.getElementById('statsDayBody');
+    if (dayRecords.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无记录</td></tr>';
+        return;
+    }
+    tbody.innerHTML = dayRecords.map(r => {
+        const typeLabel = r.type === 'income' ? '收入' : '支出';
+        const typeClass = r.type === 'income' ? 'type-income' : 'type-expense';
+        const amountClass = r.type === 'income' ? 'amount-income' : 'amount-expense';
+        const sign = r.type === 'income' ? '+' : '-';
+        const timePart = (r.datetime || '').length > 11 ? r.datetime.slice(11) : r.datetime;
+        const cat = r.category_l2
+            ? `${r.category_l1} / ${r.category_l2}`
+            : r.category_l1;
+        return `
+            <tr>
+                <td>${escapeHtml(timePart)}</td>
+                <td><span class="type-tag ${typeClass}">${typeLabel}</span></td>
+                <td class="${amountClass}">${sign}¥${r.amount.toFixed(2)}</td>
+                <td>${escapeHtml(cat)}</td>
+                <td>${escapeHtml(r.note || '')}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// 渲染当月日历
+function renderStatsCalendar(year, month, dayTotals) {
+    const grid = document.getElementById('statsCalGrid');
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = toDateInputValue(new Date());
+    const cells = [];
+
+    for (let i = 0; i < firstDay; i++) {
+        cells.push('<div class="cal-cell empty"></div>');
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const totals = dayTotals[dateStr] || { income: 0, expense: 0 };
+        const hasData = totals.income > 0 || totals.expense > 0;
+        let cls = 'cal-cell';
+        if (dateStr === todayStr) cls += ' today';
+        if (dateStr === statsSelectedDay) cls += ' selected';
+        if (hasData) cls += ' has-data';
+
+        const incHtml = totals.income > 0
+            ? `<div class="cal-inc">+${totals.income.toFixed(0)}</div>`
+            : '<div class="cal-zero">—</div>';
+        const expHtml = totals.expense > 0
+            ? `<div class="cal-exp">-${totals.expense.toFixed(0)}</div>`
+            : '';
+
+        cells.push(`
+            <div class="${cls}" data-date="${dateStr}">
+                <div class="cal-day-num">${d}</div>
+                <div class="cal-amounts">${incHtml}${expHtml}</div>
+            </div>
+        `);
+    }
+    grid.innerHTML = cells.join('');
+
+    grid.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+        cell.addEventListener('click', () => {
+            statsSelectedDay = cell.dataset.date;
+            renderStatsDayList(statsMonthRecords, statsSelectedDay);
+            grid.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selected'));
+            cell.classList.add('selected');
+        });
+    });
+}
+
+// 统计图月份范围：全年 12 个月（0—11 对应 1—12 月）
+const STATS_LAST_MONTH = 11;
+
+// 确保选中日期落在当前查看的月份内
+function ensureSelectedDayInMonth(year, month) {
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    if (statsSelectedDay.startsWith(prefix)) return;
+
+    const now = new Date();
+    if (year === now.getFullYear() && month === now.getMonth()) {
+        statsSelectedDay = toDateInputValue(now);
+    } else {
+        statsSelectedDay = toDateInputValue(new Date(year, month, 1));
+    }
+}
+
+// 图表金额格式化（纵轴刻度，可带单位）
+function formatAxisAmount(n) {
+    if (n >= 10000) {
+        const w = n / 10000;
+        return (w % 1 === 0 ? w.toFixed(0) : w.toFixed(1)) + '万';
+    }
+    if (n >= 1000) {
+        const k = n / 1000;
+        return (k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)) + 'k';
+    }
+    return Math.round(n).toString();
+}
+
+// 柱顶金额标签（显示具体数额）
+function formatBarAmount(n) {
+    if (n <= 0) return '';
+    if (n >= 10000) {
+        const w = n / 10000;
+        return '¥' + (w % 1 === 0 ? w.toFixed(0) : w.toFixed(1)) + '万';
+    }
+    return '¥' + (Number.isInteger(n) ? n : n.toFixed(2));
+}
+
+// 渲染纵坐标刻度（0 ～ max，共 5 档）
+function renderStatsYAxis(maxVal) {
+    const axis = document.getElementById('statsYAxis');
+    const ticks = 4;
+    const labels = [];
+    for (let i = ticks; i >= 0; i--) {
+        const v = (maxVal * i) / ticks;
+        labels.push(`<span class="y-tick">¥${formatAxisAmount(v)}</span>`);
+    }
+    axis.innerHTML = labels.join('');
+}
+
+// 填充年份列表：2100→1900；展开时把当前年滚到列表最上方
+function populateStatsYearList() {
+    const list = document.getElementById('statsYearList');
+    if (list.dataset.ready === '1') return;
+
+    let html = '';
+    for (let y = 2100; y >= 1900; y--) {
+        html += `<li><button type="button" class="year-option" data-year="${y}" role="option">${y}年</button></li>`;
+    }
+    list.innerHTML = html;
+    list.dataset.ready = '1';
+
+    list.querySelectorAll('.year-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectStatsYear(parseInt(btn.dataset.year, 10));
+        });
+    });
+}
+
+function updateStatsYearDisplay() {
+    document.getElementById('statsYearDisplay').textContent = `${statsViewYear}年`;
+    document.querySelectorAll('#statsYearList .year-option').forEach(btn => {
+        const y = parseInt(btn.dataset.year, 10);
+        const active = y === statsViewYear;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+}
+
+function openStatsYearPanel() {
+    const panel = document.getElementById('statsYearPanel');
+    const list = document.getElementById('statsYearList');
+    const trigger = document.getElementById('statsYearTrigger');
+
+    panel.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    updateStatsYearDisplay();
+
+    const active = list.querySelector(`.year-option[data-year="${statsViewYear}"]`);
+    if (active) {
+        list.scrollTop = active.offsetTop;
+    }
+}
+
+function closeStatsYearPanel() {
+    document.getElementById('statsYearPanel').hidden = true;
+    document.getElementById('statsYearTrigger').setAttribute('aria-expanded', 'false');
+}
+
+function toggleStatsYearPanel() {
+    const panel = document.getElementById('statsYearPanel');
+    if (panel.hidden) openStatsYearPanel();
+    else closeStatsYearPanel();
+}
+
+async function selectStatsYear(year) {
+    statsViewYear = year;
+    updateStatsYearDisplay();
+    closeStatsYearPanel();
+
+    ensureSelectedDayInMonth(statsViewYear, statsViewMonth);
+    await loadStatsYearData();
+}
+
+function updateStatsYearTitle() {
+    document.getElementById('statsYearTitle').textContent =
+        `${statsViewYear}年 · 各月收支（1月—12月）`;
+}
+
+// 渲染年度柱状图（全年 12 个月），月份按钮可跳转日历
+function renderStatsYearChart(year, monthTotals, viewMonth) {
+    const container = document.getElementById('statsYearChart');
+
+    let maxVal = 1;
+    for (let m = 0; m <= STATS_LAST_MONTH; m++) {
+        const key = `${year}-${String(m + 1).padStart(2, '0')}`;
+        const t = monthTotals[key] || { income: 0, expense: 0 };
+        maxVal = Math.max(maxVal, t.income, t.expense);
+    }
+    renderStatsYAxis(maxVal);
+
+    const cols = [];
+    for (let m = 0; m <= STATS_LAST_MONTH; m++) {
+        const key = `${year}-${String(m + 1).padStart(2, '0')}`;
+        const t = monthTotals[key] || { income: 0, expense: 0 };
+        const incH = t.income > 0 ? Math.max(4, (t.income / maxVal) * 100) : 0;
+        const expH = t.expense > 0 ? Math.max(4, (t.expense / maxVal) * 100) : 0;
+        const activeCol = m === viewMonth ? ' active' : '';
+        const activeBtn = m === viewMonth ? ' active' : '';
+        const incLabel = formatBarAmount(t.income);
+        const expLabel = formatBarAmount(t.expense);
+
+        cols.push(`
+            <div class="bar-col${activeCol}">
+                <div class="bar-pair">
+                    <div class="bar-wrap">
+                        <span class="bar-label inc${incLabel ? '' : ' empty'}">${incLabel || '0'}</span>
+                        <div class="bar income" style="height:${incH}%"></div>
+                    </div>
+                    <div class="bar-wrap">
+                        <span class="bar-label exp${expLabel ? '' : ' empty'}">${expLabel || '0'}</span>
+                        <div class="bar expense" style="height:${expH}%"></div>
+                    </div>
+                </div>
+                <button type="button" class="month-btn${activeBtn}" data-month="${m}">
+                    ${m + 1}月
+                </button>
+            </div>
+        `);
+    }
+    container.innerHTML = cols.join('');
+
+    container.querySelectorAll('.month-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            selectStatsMonth(parseInt(btn.dataset.month, 10));
+        });
+    });
+}
+
+// 点击月份：切换日历到该月并刷新日记录
+async function selectStatsMonth(month) {
+    statsViewMonth = month;
+    ensureSelectedDayInMonth(statsViewYear, month);
+
+    const monthTotals = aggregateByMonth(statsYearRecords);
+    renderStatsYearChart(statsViewYear, monthTotals, month);
+    await loadStatsMonthView();
+}
+
+// 加载当前查看月份的日历与日记录
+async function loadStatsMonthView() {
+    const year = statsViewYear;
+    const month = statsViewMonth;
+    const monthFrom = toDateInputValue(new Date(year, month, 1));
+    const monthTo = toDateInputValue(new Date(year, month + 1, 0));
+
+    document.getElementById('statsDateLabel').textContent = `${year}年`;
+    document.getElementById('statsMonthTitle').textContent =
+        `${year}年${month + 1}月 · 按日汇总`;
+
+    ensureSelectedDayInMonth(year, month);
+
+    try {
+        statsMonthRecords = await fetchRecordsInRange(monthFrom, monthTo);
+        const dayTotals = aggregateByDay(statsMonthRecords);
+        renderStatsCalendar(year, month, dayTotals);
+        renderStatsDayList(statsMonthRecords, statsSelectedDay);
+    } catch (e) {
+        console.error('[App] 加载月份统计失败:', e);
+    }
+}
+
+// 加载选中年份的柱状图数据
+async function loadStatsYearData() {
+    const yearFrom = toDateInputValue(new Date(statsViewYear, 0, 1));
+    const yearTo = toDateInputValue(new Date(statsViewYear, 11, 31));
+
+    updateStatsYearTitle();
+
+    try {
+        statsYearRecords = await fetchRecordsInRange(yearFrom, yearTo);
+        const monthTotals = aggregateByMonth(statsYearRecords);
+        renderStatsYearChart(statsViewYear, monthTotals, statsViewMonth);
+        await loadStatsMonthView();
+    } catch (e) {
+        console.error('[App] 加载年度统计失败:', e);
+    }
+}
+
+// 加载并刷新统计页全部区块（年 → 月 → 日）
+async function loadStatsPage() {
+    const now = new Date();
+    if (!statsSelectedDay) {
+        statsSelectedDay = toDateInputValue(now);
+    }
+    ensureSelectedDayInMonth(statsViewYear, statsViewMonth);
+
+    updateStatsYearDisplay();
+    await loadStatsYearData();
+}
+
+// 记账操作后若当前在统计页则同步刷新
+function refreshStatsIfVisible() {
+    const statsPane = document.getElementById('pane-stats');
+    if (statsPane && statsPane.classList.contains('active')) {
+        loadStatsPage();
+    }
 }
 
 // ── 筛选辅助 ────────────────────────────────────────────────────────
@@ -524,6 +920,11 @@ function resetFilters() {
 
 // 页面加载完成后执行一次：拉数据 → 渲染 → 绑定事件
 async function init() {
+    const now = new Date();
+    statsSelectedDay = toDateInputValue(now);
+    statsViewYear = now.getFullYear();
+    statsViewMonth = now.getMonth();
+
     await loadCategories();          // 1. 拉分类 → 写入 categories 缓存
     populateFilterCategorySelect();  // 2. 填充筛选栏一级分类下拉框
     await loadRecords();             // 3. 拉记录 → 渲染表格和汇总
@@ -534,6 +935,22 @@ async function init() {
 
     // ── 事件绑定（用户操作 → 回调函数） ─────────────────────────────
     // addEventListener(事件名, 回调函数)：注册事件监听，类似 C++ 信号/槽
+
+    // 底部导航切换
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    populateStatsYearList();
+    updateStatsYearDisplay();
+    document.getElementById('statsYearTrigger').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        toggleStatsYearPanel();
+    });
+    document.getElementById('statsYearPicker').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+    });
+    document.addEventListener('click', () => closeStatsYearPanel());
 
     // 「添加记录」按钮 → 打开新增弹窗
     document.getElementById('btnOpenAdd').addEventListener('click', openAddModal);
