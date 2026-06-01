@@ -14,11 +14,13 @@ let categories = { expense: [], income: [] };
 // 当前页展示的记录列表：从 GET /api/records 加载后缓存于此
 let currentRecords = [];
 
-// 分页：当前页码（从 1 开始）
-let currentPage = 1;
-
-// 每页记录条数，与后端 RecordQuery.page_size 默认值一致
-const PAGE_SIZE = 50;
+// 记录列表：递增批次加载（首次 30 条，每次「加载更多」再增加 50、70、90…）
+const RECORDS_FIRST_BATCH = 30;
+const RECORDS_BATCH_INCREMENT = 20;
+let recordsTotal = 0;
+let loadMoreClickCount = 0;
+let recordsLoading = false;
+let loadMoreObserver = null;
 
 // 统计页：选中的日期、当前查看的年/月（0-11）
 let statsSelectedDay = '';
@@ -454,22 +456,104 @@ function buildFilterSearchParams(f, page, pageSize) {
 
 // ── 加载记录 ────────────────────────────────────────────────────────
 
-// 从后端拉取记录列表，更新缓存并刷新表格和汇总
-async function loadRecords() {
+/** 本次「加载更多」将追加的条数（第 1 次 +50，第 2 次 +70…） */
+function nextLoadMoreBatchSize() {
+    return RECORDS_FIRST_BATCH + (loadMoreClickCount + 1) * RECORDS_BATCH_INCREMENT;
+}
+
+function updateRecordCountLabel() {
+    const shown = currentRecords.length;
+    const total = recordsTotal;
+    const el = document.getElementById('recordCount');
+    if (total <= 0) {
+        el.textContent = '0 条记录';
+    } else if (shown >= total) {
+        el.textContent = `共 ${total} 条（已全部显示）`;
+    } else {
+        el.textContent = `已显示 ${shown} / ${total} 条`;
+    }
+}
+
+function updateLoadMoreUi() {
+    const bar = document.getElementById('loadMoreBar');
+    const btn = document.getElementById('btnLoadMoreRecords');
+    const hint = document.getElementById('loadMoreHint');
+    if (!bar || !btn) return;
+
+    const hasMore = currentRecords.length < recordsTotal;
+    bar.hidden = !hasMore;
+    bar.classList.toggle('is-loading', recordsLoading);
+
+    if (hasMore) {
+        const batch = nextLoadMoreBatchSize();
+        btn.textContent = `加载更多（+${batch} 条）`;
+        const remain = recordsTotal - currentRecords.length;
+        hint.textContent = `还可加载 ${remain} 条 · 滚到底部将自动加载`;
+    } else {
+        hint.textContent = '';
+    }
+}
+
+async function fetchRecordsUpTo(targetCount) {
     const f = readFilterFields(RECORD_FILTER_IDS);
-    const params = buildFilterSearchParams(f, currentPage, PAGE_SIZE);
+    const pageSize = Math.max(targetCount, RECORDS_FIRST_BATCH);
+    const params = buildFilterSearchParams(f, 1, pageSize);
+    const data = await API.get('/api/records?' + params.toString());
+    recordsTotal = data.total || 0;
+    const rows = data.records || [];
+    return rows.slice(0, Math.min(rows.length, targetCount));
+}
+
+// reset=true：筛选变更后从头加载；false 时由 loadMoreRecords 调用
+async function loadRecords(reset = true) {
+    if (recordsLoading) return;
+    recordsLoading = true;
+    updateLoadMoreUi();
+
+    if (reset) {
+        loadMoreClickCount = 0;
+    }
+
+    const targetCount = reset
+        ? RECORDS_FIRST_BATCH
+        : currentRecords.length + nextLoadMoreBatchSize();
 
     try {
-        const data = await API.get('/api/records?' + params.toString()); // → db.queryRecords()
-        currentRecords = data.records || [];  // 缓存当前页记录
-        // textContent：设置元素的纯文本内容（不含 HTML 标签）
-        document.getElementById('recordCount').textContent =
-            `${data.total || 0} 条记录`;
-        renderRecords();    // 将 currentRecords 渲染到表格
-        updateSummary();    // 重新计算总收入/支出/结余
+        currentRecords = await fetchRecordsUpTo(targetCount);
+        updateRecordCountLabel();
+        renderRecords();
+        updateLoadMoreUi();
+        if (reset) {
+            updateSummary();
+        }
     } catch (e) {
         console.error('[App] 加载记录失败:', e);
+    } finally {
+        recordsLoading = false;
+        updateLoadMoreUi();
     }
+}
+
+async function loadMoreRecords() {
+    if (recordsLoading || currentRecords.length >= recordsTotal) return;
+    loadMoreClickCount += 1;
+    await loadRecords(false);
+}
+
+function setupLoadMoreScroll() {
+    const sentinel = document.getElementById('loadMoreSentinel');
+    if (!sentinel || loadMoreObserver) return;
+
+    loadMoreObserver = new IntersectionObserver(
+        (entries) => {
+            const hit = entries.some((e) => e.isIntersecting);
+            if (hit && !recordsLoading && currentRecords.length < recordsTotal) {
+                loadMoreRecords();
+            }
+        },
+        { root: null, rootMargin: '80px', threshold: 0 }
+    );
+    loadMoreObserver.observe(sentinel);
 }
 
 // ── 渲染记录表格 ────────────────────────────────────────────────────
@@ -1706,8 +1790,7 @@ function setQuickDateRange(range) {
     const fromEl = document.getElementById('filterDateFrom');
     const toEl = document.getElementById('filterDateTo');
     applyQuickDateRangeToElements(fromEl, toEl, range);
-    currentPage = 1;
-    loadRecords();
+    loadRecords(true);
 }
 
 function setExportQuickDateRange(range) {
@@ -1730,8 +1813,7 @@ function resetFilters() {
     document.getElementById('filterKeyword').value = '';
     document.getElementById('filterSortBy').value = 'datetime';
     document.getElementById('filterSortOrder').value = 'desc';
-    currentPage = 1;
-    loadRecords();
+    loadRecords(true);
 }
 
 // ── 初始化 ───────────────────────────────────────────────────────────
@@ -1789,40 +1871,40 @@ async function init() {
 
     document.getElementById('filterType').addEventListener('change', () => {
         populateFilterCategorySelect();
-        currentPage = 1;
-        loadRecords();
+        loadRecords(true);
     });
 
-    // 下拉类筛选：变化即重置到第 1 页并重新加载
+    // 下拉类筛选：变化即重置列表并重新加载
     ['filterCatL2', 'filterSortBy', 'filterSortOrder'].forEach(id => {
         document.getElementById(id).addEventListener('change', () => {
-            currentPage = 1;
-            loadRecords();
+            loadRecords(true);
         });
     });
 
     // 一级分类变化 → 联动二级分类下拉框，再重新加载
     document.getElementById('filterCatL1').addEventListener('change', () => {
         updateFilterL2Select();
-        currentPage = 1;
-        loadRecords();
+        loadRecords(true);
     });
 
     // 文本/数字/日期类输入：回车即查询
     ['filterDateFrom', 'filterDateTo', 'filterAmountMin', 'filterAmountMax', 'filterKeyword'].forEach(id => {
         document.getElementById(id).addEventListener('keydown', (ev) => {
             if (ev.key === 'Enter') {
-                currentPage = 1;
-                loadRecords();
+                loadRecords(true);
             }
         });
     });
 
     // 查询按钮 → 应用全部筛选条件
     document.getElementById('btnSearch').addEventListener('click', () => {
-        currentPage = 1;
-        loadRecords();
+        loadRecords(true);
     });
+
+    document.getElementById('btnLoadMoreRecords').addEventListener('click', () => {
+        loadMoreRecords();
+    });
+    setupLoadMoreScroll();
 
     // 重置按钮 → 清空全部筛选条件
     document.getElementById('btnReset').addEventListener('click', resetFilters);

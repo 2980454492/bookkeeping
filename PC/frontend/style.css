@@ -832,6 +832,28 @@ body {
 
 /* ── 表格 ────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
+.load-more-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 12px 0 8px;
+}
+.load-more-hint {
+    font-size: 13px;
+    color: #888;
+}
+.load-more-sentinel {
+    height: 1px;
+    width: 100%;
+    pointer-events: none;
+}
+.load-more-bar.is-loading #btnLoadMoreRecords {
+    opacity: 0.65;
+    pointer-events: none;
+}
 table {
     width: 100%;
     border-collapse: collapse;
