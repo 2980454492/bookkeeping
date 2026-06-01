@@ -42,9 +42,17 @@ bookkeeping/
 │   └── categories.json    #   默认分类模板
 ├── scripts/               # 构建/启动脚本
 │   ├── run.sh             #   一键运行（Linux/WSL）
-│   ├── build-win.sh           #   交叉编译生成 Windows .exe
-│   ├── toolchain-win.cmake     #   CMake 交叉编译工具链
-│   └── run.bat                 #   Windows 启动器
+│   ├── build-win.sh       #   交叉编译生成 Windows .exe
+│   ├── toolchain-win.cmake  #   CMake 交叉编译工具链
+│   └── run.bat            #   Windows 启动器
+├── .claude/               # AI 辅助开发配置
+│   ├── CLAUDE.md          #   编码规范（Claude 始终加载）
+│   ├── settings.json      #   权限与 skills 注册
+│   └── skills/            #   按需加载的任务模板
+│       ├── code-review/   #     代码审查清单
+│       ├── build-check/   #     构建验证流程
+│       ├── new-api/       #     新增 API 流程
+│       └── db-safe/       #     数据库变更安全规则
 ├── mobile/                # ← 预留：手机 APP
 ├── requirements.md        # 需求文档
 └── .gitignore
