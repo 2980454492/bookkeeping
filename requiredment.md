@@ -881,4 +881,5 @@ CREATE TABLE budgets (
 ---
 
 > **15 项产品决策仍然有效。** PC V1 核心已可日常使用（`PC/run.sh` 或浏览器打开 `127.0.0.1:18080`）。  
-> **建议下一步**：① `.exe` + WebView2 打包；② `/api/stats` 与饼图/折线图；③ 删除分类引用检查；④ Web 端部署。
+> **Windows 安装包**：见 [`PC/packaging/DESIGN.md`](PC/packaging/DESIGN.md)（Inno Setup + `build-release.ps1`）。  
+> **建议下一步**：① 按 DESIGN 打出 Setup.exe 并虚拟机实测；② WebView2 壳替换 bat；③ `/api/stats` 与饼图/折线图。

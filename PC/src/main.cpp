@@ -19,7 +19,34 @@
 #include <cstdlib>
 #include <filesystem>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace fs = std::filesystem;
+
+static bool hasAppResources(const fs::path& dir) {
+    return fs::exists(dir / "categories.json") && fs::exists(dir / "frontend");
+}
+
+static fs::path executableDirectory() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    return fs::path(buf).parent_path();
+#else
+    char exe_path[4096] = {};
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len <= 0) return {};
+    return fs::path(std::string(exe_path, static_cast<size_t>(len))).parent_path();
+#endif
+}
 
 // ── 查找「资源根目录」────────────────────────────────────────────
 // 根目录指同时包含 categories.json（分类模板）和 frontend/（静态页面）的目录。
@@ -34,21 +61,16 @@ static fs::path findRoot() {
     // ── 策略 1：当前工作目录 ─────────────────────────────────────
     // 典型场景：run.sh 末尾 `cd build && ./bookkeeping`，cwd 即为 build/，
     // 且 POST_BUILD 已把资源复制到 build/，故 cwd 下可直接找到两个标志文件。
-    fs::path cwd = fs::current_path();  // 进程启动时 shell 的 pwd，不是 exe 所在目录
-    if (fs::exists(cwd / "categories.json") && fs::exists(cwd / "frontend")) {
-        return cwd;
+    // ── 策略 1：可执行文件所在目录（安装包 / 快捷方式启动时最可靠）──
+    fs::path exe_dir = executableDirectory();
+    if (!exe_dir.empty() && hasAppResources(exe_dir)) {
+        return exe_dir;
     }
 
-    // ── 策略 2：可执行文件所在目录（Linux）──────────────────────
-    // 典型场景：未 cd 到 build、用绝对/相对路径启动，如 `./build/bookkeeping`（cwd 可能在仓库根）。
-    // readlink("/proc/self/exe") 解析当前进程真实路径（含符号链接），再取 parent 得到 exe 目录。
-    char exe_path[4096] = {};
-    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-    if (len > 0) {
-        fs::path exe_dir = fs::path(std::string(exe_path, len)).parent_path();
-        if (fs::exists(exe_dir / "categories.json") && fs::exists(exe_dir / "frontend")) {
-            return exe_dir;
-        }
+    // ── 策略 2：当前工作目录 ─────────────────────────────────────
+    fs::path cwd = fs::current_path();
+    if (hasAppResources(cwd)) {
+        return cwd;
     }
 
     // ── 策略 3：cwd 在 build/ 时，再试上一级目录 ─────────────────
