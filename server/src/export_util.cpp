@@ -1,3 +1,8 @@
+// export_util.cpp — 导出工具实现
+//
+// 支持 txt / csv / tsv / json / xlsx 五种导出格式。
+// xlsx 导出不依赖第三方库，用纯 C++ 实现 ZIP 打包 + Office Open XML 结构组装。
+
 #include "export_util.h"
 
 #include <algorithm>
@@ -93,6 +98,8 @@ std::string xmlEscape(const std::string& s) {
     return out;
 }
 
+// ── CRC32 校验（用于 ZIP 条目） ────────────────────────────────────
+
 uint32_t crc32Update(uint32_t crc, uint8_t byte) {
     crc ^= byte;
     for (int i = 0; i < 8; ++i) {
@@ -121,6 +128,9 @@ void writeLe32(std::ostringstream& os, uint32_t v) {
     os.put(static_cast<char>((v >> 16) & 0xFF));
     os.put(static_cast<char>((v >> 24) & 0xFF));
 }
+
+// ── 纯内存 ZIP 打包（STORE 模式，无压缩）──────────────────────────
+// 用于生成 .xlsx 文件（xlsx 本质是 ZIP 容器），不依赖外部压缩库
 
 std::string buildZipStore(const std::vector<std::pair<std::string, std::string>>& files) {
     struct Entry {
@@ -190,6 +200,10 @@ std::string buildZipStore(const std::vector<std::pair<std::string, std::string>>
     writeLe16(zip, 0);
     return zip.str();
 }
+
+// ── XLSX 生成（Office Open XML → ZIP） ─────────────────────────────
+// xlsx 文件结构: [Content_Types].xml + _rels/.rels + xl/workbook.xml + xl/worksheets/sheet1.xml
+// 所有 XML 作为 ZIP 条目打包为单个 xlsx 字节流
 
 std::string buildXlsxSheet(const std::vector<Record>& records) {
     auto cell = [](int row, int col, const std::string& text) {

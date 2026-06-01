@@ -1,3 +1,8 @@
+// import_util.cpp — 导入工具实现
+//
+// 支持 csv / tsv / json / txt / xlsx 五种导入格式。
+// xlsx 导入不依赖第三方库，用纯 C++ 实现 ZIP 解压 + Office Open XML 解析。
+
 #include "import_util.h"
 
 #include <json.hpp>
@@ -393,6 +398,9 @@ ImportParseResult parseTxtContent(const std::string& content) {
 
 // ── Base64 ─────────────────────────────────────────────────────────
 
+// ── Base64 解码 ─────────────────────────────────────────────────────
+// 将前端传来的 Base64 编码的 .xlsx 文件解码为原始 ZIP 字节流
+
 std::string base64Decode(const std::string& input) {
     static const int8_t table[256] = {
         -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
@@ -471,6 +479,10 @@ bool inflateDeflateData(const std::string& in, size_t expected_size, std::string
     out.resize(zs.total_out);
     return true;
 }
+
+// ── ZIP 解压（STORE + DEFLATE） ─────────────────────────────────────
+// 纯内存解析 ZIP 中央目录 → 按文件名提取条目 → DEFLATE 解压
+// 用于读取 .xlsx 中的 XML 工作表
 
 bool buildZipIndex(
     const std::string& zip,
@@ -637,6 +649,10 @@ std::string cellValue(
     if (!v.empty()) return v;
     return extractTagText(cell_xml, "t");
 }
+
+// ── XLSX 工作表解析 ────────────────────────────────────────────────
+// 解析 sheet1.xml 中的行/单元格 → 提取文本 → 组装为 Record
+// 支持 inlineStr（直接内联字符串）和 s（共享字符串表索引）两种单元格类型
 
 ImportParseResult parseXlsxBinary(const std::string& binary) {
     ImportParseResult result;

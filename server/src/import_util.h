@@ -1,3 +1,8 @@
+// import_util.h — 导入工具接口
+//
+// 职责：解析导入内容（csv/tsv/json/txt/xlsx）为 Record 列表。
+// 实现见 import_util.cpp；handlers.cpp 通过 parseImportedRecords() 调用。
+
 #pragma once
 
 #include "db.h"

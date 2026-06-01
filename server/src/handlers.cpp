@@ -66,6 +66,8 @@ static void fillRecordQueryFromJson(RecordQuery& q, const json& j) {
         q.page_size = j["page_size"].get<int>();
 }
 
+// ── 查询参数 → RecordQuery ─────────────────────────────────────────
+// 用 try-catch 包裹数值解析，防止非法参数（如 amount_min=abc）导致 crash
 static RecordQuery parseRecordQuery(const httplib::Request& req) {
     RecordQuery q;
     if (req.has_param("keyword"))      q.keyword    = req.get_param_value("keyword");
@@ -74,12 +76,24 @@ static RecordQuery parseRecordQuery(const httplib::Request& req) {
     if (req.has_param("cat_l2"))       q.cat_l2     = req.get_param_value("cat_l2");
     if (req.has_param("date_from"))    q.date_from  = req.get_param_value("date_from");
     if (req.has_param("date_to"))      q.date_to    = req.get_param_value("date_to");
-    if (req.has_param("amount_min"))   q.amount_min = std::stod(req.get_param_value("amount_min"));
-    if (req.has_param("amount_max"))   q.amount_max = std::stod(req.get_param_value("amount_max"));
+    if (req.has_param("amount_min")) {
+        try { q.amount_min = std::stod(req.get_param_value("amount_min")); }
+        catch (...) { /* 非法值 → 保留默认 -1（不限制下限） */ }
+    }
+    if (req.has_param("amount_max")) {
+        try { q.amount_max = std::stod(req.get_param_value("amount_max")); }
+        catch (...) { /* 非法值 → 保留默认 -1（不限制上限） */ }
+    }
     if (req.has_param("sort_by"))      q.sort_by    = req.get_param_value("sort_by");
     if (req.has_param("sort_order"))   q.sort_order = req.get_param_value("sort_order");
-    if (req.has_param("page"))         q.page       = std::stoi(req.get_param_value("page"));
-    if (req.has_param("page_size"))    q.page_size  = std::stoi(req.get_param_value("page_size"));
+    if (req.has_param("page")) {
+        try { q.page = std::stoi(req.get_param_value("page")); }
+        catch (...) { /* 非法值 → 保留默认 1 */ }
+    }
+    if (req.has_param("page_size")) {
+        try { q.page_size = std::stoi(req.get_param_value("page_size")); }
+        catch (...) { /* 非法值 → 保留默认 50 */ }
+    }
     return q;
 }
 
