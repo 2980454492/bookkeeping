@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ── 依赖库 ────────────────────────────────────────────────────
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # ── 源文件 ────────────────────────────────────────────────────
 set(SOURCES
@@ -30,6 +31,7 @@ target_include_directories(bookkeeping PRIVATE
 target_link_libraries(bookkeeping PRIVATE
     SQLite::SQLite3
     Threads::Threads
+    ZLIB::ZLIB
 )
 
 # ── 将资源文件复制到构建目录 ───────────────────────────────────

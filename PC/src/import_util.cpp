@@ -8,6 +8,7 @@
 #include <optional>
 #include <sstream>
 #include <unordered_map>
+#include <zlib.h>
 
 using json = nlohmann::json;
 
@@ -339,25 +340,99 @@ uint16_t readLe16(const std::string& data, size_t pos) {
            (static_cast<uint16_t>(static_cast<unsigned char>(data[pos + 1])) << 8);
 }
 
-bool extractZipEntry(const std::string& zip, const std::string& name, std::string& out) {
-    size_t pos = 0;
-    while (pos + 30 <= zip.size()) {
-        if (readLe32(zip, pos) != 0x04034b50u) break;
-        uint16_t method = readLe16(zip, pos + 8);
-        uint32_t comp_size = readLe32(zip, pos + 18);
-        uint16_t name_len = readLe16(zip, pos + 26);
-        uint16_t extra_len = readLe16(zip, pos + 28);
-        size_t name_start = pos + 30;
-        if (name_start + name_len > zip.size()) break;
-        std::string entry_name = zip.substr(name_start, name_len);
-        size_t data_start = name_start + name_len + extra_len;
-        if (data_start + comp_size > zip.size()) break;
-        if (entry_name == name) {
-            if (method != 0) return false;
-            out = zip.substr(data_start, comp_size);
-            return true;
+struct ZipEntryMeta {
+    uint16_t method = 0;
+    uint32_t comp_size = 0;
+    uint32_t uncomp_size = 0;
+    uint32_t local_header_offset = 0;
+};
+
+bool inflateDeflateData(const std::string& in, size_t expected_size, std::string& out) {
+    z_stream zs{};
+    zs.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(in.data()));
+    zs.avail_in = static_cast<uInt>(in.size());
+    if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) return false;
+
+    out.clear();
+    out.resize(expected_size > 0 ? expected_size : (in.size() * 3 + 256));
+    int ret = Z_OK;
+    while (ret == Z_OK) {
+        if (zs.total_out >= out.size()) out.resize(out.size() + in.size() + 256);
+        zs.next_out = reinterpret_cast<Bytef*>(&out[zs.total_out]);
+        zs.avail_out = static_cast<uInt>(out.size() - zs.total_out);
+        ret = inflate(&zs, Z_NO_FLUSH);
+    }
+    inflateEnd(&zs);
+    if (ret != Z_STREAM_END) return false;
+    out.resize(zs.total_out);
+    return true;
+}
+
+bool buildZipIndex(
+    const std::string& zip,
+    std::unordered_map<std::string, ZipEntryMeta>& index) {
+
+    if (zip.size() < 22) return false;
+    size_t search_start = zip.size() > (0x10000 + 22) ? (zip.size() - (0x10000 + 22)) : 0;
+    size_t eocd = std::string::npos;
+    for (size_t p = zip.size() - 22; p >= search_start; --p) {
+        if (readLe32(zip, p) == 0x06054b50u) {
+            eocd = p;
+            break;
         }
-        pos = data_start + comp_size;
+        if (p == 0) break;
+    }
+    if (eocd == std::string::npos || eocd + 22 > zip.size()) return false;
+
+    uint16_t total_entries = readLe16(zip, eocd + 10);
+    uint32_t cd_size = readLe32(zip, eocd + 12);
+    uint32_t cd_offset = readLe32(zip, eocd + 16);
+    if (static_cast<size_t>(cd_offset) + cd_size > zip.size()) return false;
+
+    size_t pos = cd_offset;
+    for (uint16_t i = 0; i < total_entries; ++i) {
+        if (pos + 46 > zip.size()) return false;
+        if (readLe32(zip, pos) != 0x02014b50u) return false;
+        uint16_t method = readLe16(zip, pos + 10);
+        uint32_t comp_size = readLe32(zip, pos + 20);
+        uint32_t uncomp_size = readLe32(zip, pos + 24);
+        uint16_t name_len = readLe16(zip, pos + 28);
+        uint16_t extra_len = readLe16(zip, pos + 30);
+        uint16_t comment_len = readLe16(zip, pos + 32);
+        uint32_t local_header_offset = readLe32(zip, pos + 42);
+        size_t name_start = pos + 46;
+        size_t entry_end = name_start + name_len + extra_len + comment_len;
+        if (entry_end > zip.size()) return false;
+        std::string name = zip.substr(name_start, name_len);
+        index[name] = ZipEntryMeta{method, comp_size, uncomp_size, local_header_offset};
+        pos = entry_end;
+    }
+    return true;
+}
+
+bool extractZipEntry(const std::string& zip, const std::string& name, std::string& out) {
+    std::unordered_map<std::string, ZipEntryMeta> index;
+    if (!buildZipIndex(zip, index)) return false;
+    auto it = index.find(name);
+    if (it == index.end()) return false;
+    const auto& meta = it->second;
+
+    size_t local = static_cast<size_t>(meta.local_header_offset);
+    if (local + 30 > zip.size()) return false;
+    if (readLe32(zip, local) != 0x04034b50u) return false;
+    uint16_t name_len = readLe16(zip, local + 26);
+    uint16_t extra_len = readLe16(zip, local + 28);
+    size_t data_start = local + 30 + name_len + extra_len;
+    size_t data_end = data_start + static_cast<size_t>(meta.comp_size);
+    if (data_end > zip.size()) return false;
+    std::string payload = zip.substr(data_start, static_cast<size_t>(meta.comp_size));
+
+    if (meta.method == 0) {
+        out = std::move(payload);
+        return true;
+    }
+    if (meta.method == 8) {
+        return inflateDeflateData(payload, meta.uncomp_size, out);
     }
     return false;
 }
@@ -378,6 +453,26 @@ std::string xmlUnescape(const std::string& s) {
     return out;
 }
 
+std::string getXmlAttr(const std::string& xml, const std::string& key) {
+    std::string token = key + "=\"";
+    auto pos = xml.find(token);
+    if (pos == std::string::npos) return "";
+    pos += token.size();
+    auto end = xml.find('"', pos);
+    if (end == std::string::npos) return "";
+    return xml.substr(pos, end - pos);
+}
+
+std::string extractTagText(const std::string& xml, const std::string& tag) {
+    auto open = xml.find("<" + tag);
+    if (open == std::string::npos) return "";
+    auto gt = xml.find('>', open);
+    if (gt == std::string::npos) return "";
+    auto close = xml.find("</" + tag + ">", gt + 1);
+    if (close == std::string::npos) return "";
+    return xmlUnescape(xml.substr(gt + 1, close - gt - 1));
+}
+
 int colFromCellRef(const std::string& ref) {
     int col = 0;
     for (char c : ref) {
@@ -387,20 +482,56 @@ int colFromCellRef(const std::string& ref) {
     return col - 1;
 }
 
-std::string extractInlineCellText(const std::string& cell_xml) {
-    auto t_open = cell_xml.find("<t>");
-    if (t_open == std::string::npos) {
-        t_open = cell_xml.find("<t ");
-        if (t_open == std::string::npos) return "";
-        t_open = cell_xml.find('>', t_open);
-        if (t_open == std::string::npos) return "";
-        ++t_open;
-    } else {
-        t_open += 3;
+std::vector<std::string> parseSharedStrings(const std::string& xml) {
+    std::vector<std::string> table;
+    size_t pos = 0;
+    while (true) {
+        auto si_start = xml.find("<si", pos);
+        if (si_start == std::string::npos) break;
+        auto si_gt = xml.find('>', si_start);
+        if (si_gt == std::string::npos) break;
+        auto si_end = xml.find("</si>", si_gt + 1);
+        if (si_end == std::string::npos) break;
+        std::string si_xml = xml.substr(si_gt + 1, si_end - si_gt - 1);
+
+        std::string value;
+        size_t t_pos = 0;
+        while (true) {
+            auto t_start = si_xml.find("<t", t_pos);
+            if (t_start == std::string::npos) break;
+            auto t_gt = si_xml.find('>', t_start);
+            if (t_gt == std::string::npos) break;
+            auto t_end = si_xml.find("</t>", t_gt + 1);
+            if (t_end == std::string::npos) break;
+            value += xmlUnescape(si_xml.substr(t_gt + 1, t_end - t_gt - 1));
+            t_pos = t_end + 4;
+        }
+        table.push_back(value);
+        pos = si_end + 5;
     }
-    auto t_close = cell_xml.find("</t>", t_open);
-    if (t_close == std::string::npos) return "";
-    return xmlUnescape(cell_xml.substr(t_open, t_close - t_open));
+    return table;
+}
+
+std::string cellValue(
+    const std::string& cell_xml,
+    const std::vector<std::string>& shared_strings) {
+
+    std::string type = getXmlAttr(cell_xml, "t");
+    if (type == "inlineStr") return extractTagText(cell_xml, "t");
+    if (type == "s") {
+        std::string v = trim(extractTagText(cell_xml, "v"));
+        if (v.empty()) return "";
+        try {
+            size_t idx = static_cast<size_t>(std::stoul(v));
+            if (idx < shared_strings.size()) return shared_strings[idx];
+        } catch (...) {
+            return "";
+        }
+        return "";
+    }
+    std::string v = extractTagText(cell_xml, "v");
+    if (!v.empty()) return v;
+    return extractTagText(cell_xml, "t");
 }
 
 ImportParseResult parseXlsxBinary(const std::string& binary) {
@@ -414,6 +545,11 @@ ImportParseResult parseXlsxBinary(const std::string& binary) {
     std::string sheet;
     if (!extractZipEntry(binary, "xl/worksheets/sheet1.xml", sheet))
         return fail("无法读取 Excel 工作表");
+    std::string shared_xml;
+    std::vector<std::string> shared_strings;
+    if (extractZipEntry(binary, "xl/sharedStrings.xml", shared_xml)) {
+        shared_strings = parseSharedStrings(shared_xml);
+    }
 
     size_t pos = 0;
     int row_num = 0;
@@ -434,18 +570,21 @@ ImportParseResult parseXlsxBinary(const std::string& binary) {
             auto c_start = row_xml.find("<c ", cpos);
             if (c_start == std::string::npos) break;
             auto c_end = row_xml.find("</c>", c_start);
-            if (c_end == std::string::npos) break;
-            std::string cell = row_xml.substr(c_start, c_end - c_start + 4);
-            cpos = c_end + 4;
+            auto self_end = row_xml.find("/>", c_start);
+            std::string cell;
+            if (self_end != std::string::npos && (c_end == std::string::npos || self_end < c_end)) {
+                cell = row_xml.substr(c_start, self_end - c_start + 2);
+                cpos = self_end + 2;
+            } else {
+                if (c_end == std::string::npos) break;
+                cell = row_xml.substr(c_start, c_end - c_start + 4);
+                cpos = c_end + 4;
+            }
 
-            auto r_attr = cell.find(" r=\"");
-            if (r_attr == std::string::npos) continue;
-            r_attr += 4;
-            auto r_end = cell.find('"', r_attr);
-            if (r_end == std::string::npos) continue;
-            std::string ref = cell.substr(r_attr, r_end - r_attr);
+            std::string ref = getXmlAttr(cell, "r");
+            if (ref.empty()) continue;
             int col = colFromCellRef(ref);
-            cells[col] = extractInlineCellText(cell);
+            cells[col] = cellValue(cell, shared_strings);
         }
 
         std::vector<std::string> cols(6);

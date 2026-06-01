@@ -188,6 +188,7 @@ void registerRoutes(httplib::Server& svr, Database& db,
             auto j = json::parse(req.body);
             std::string filename = j.value("filename", "");
             std::string format = j.value("format", "csv");
+            std::string conflict_strategy = j.value("conflict_strategy", "cancel");
             if (filename.empty()) {
                 res.status = 400;
                 res.set_content(errorJson("filename 为必填字段").dump(), "application/json");
@@ -201,9 +202,17 @@ void registerRoutes(httplib::Server& svr, Database& db,
 
             auto result = db.queryRecords(q);
             auto export_result = exportRecordsToFile(
-                g_app_root_path, filename, format, result.records);
+                g_app_root_path, filename, format, conflict_strategy, result.records);
 
             if (!export_result.ok) {
+                if (export_result.error == "文件已存在") {
+                    res.status = 409;
+                    res.set_content(json{
+                        {"error", "文件已存在"},
+                        {"error_code", "file_exists"}
+                    }.dump(), "application/json");
+                    return;
+                }
                 res.status = 400;
                 res.set_content(errorJson(export_result.error).dump(), "application/json");
                 return;

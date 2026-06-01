@@ -962,17 +962,14 @@ function syncExportFiltersFromRecordsPage() {
     applyFilterFields(EXPORT_FILTER_IDS, readFilterFields(RECORD_FILTER_IDS));
 }
 
-/** 导出弹窗默认筛选：全部类型/分类、当月日期、金额不限 */
+/** 导出弹窗默认筛选：全部数据 */
 function applyDefaultExportFilters() {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth();
     applyFilterFields(EXPORT_FILTER_IDS, {
         type: '',
         catL1: '',
         catL2: '',
-        dateFrom: toDateInputValue(new Date(y, m, 1)),
-        dateTo: toDateInputValue(new Date(y, m + 1, 0)),
+        dateFrom: '',
+        dateTo: '',
         amountMin: '',
         amountMax: '',
         keyword: '',
@@ -1002,6 +999,31 @@ function openImportModal() {
 
 function closeImportModal() {
     document.getElementById('importModal').style.display = 'none';
+}
+
+let exportConflictResolver = null;
+
+function openExportConflictModal() {
+    document.getElementById('exportConflictModal').style.display = 'flex';
+}
+
+function closeExportConflictModal() {
+    document.getElementById('exportConflictModal').style.display = 'none';
+}
+
+function resolveExportConflict(choice) {
+    if (exportConflictResolver) {
+        exportConflictResolver(choice);
+        exportConflictResolver = null;
+    }
+    closeExportConflictModal();
+}
+
+function chooseExportConflictAction() {
+    return new Promise((resolve) => {
+        exportConflictResolver = resolve;
+        openExportConflictModal();
+    });
 }
 
 function readFileAsText(file) {
@@ -1072,18 +1094,39 @@ async function submitExport() {
         ...buildFilterQueryObject(f)
     };
 
-    try {
-        const data = await API.post('/api/records/export', payload);
-        const matched = data.total_matched != null ? data.total_matched : data.count;
-        alert(`导出成功\n文件：${data.filename}\n路径：${data.path}\n导出 ${data.count} 条（筛选命中 ${matched} 条）`);
-        closeExportModal();
-    } catch (e) {
-        let msg = e.message || String(e);
+    while (true) {
         try {
-            const err = JSON.parse(msg);
-            if (err.error) msg = err.error;
-        } catch (_) { /* 非 JSON */ }
-        alert('导出失败：' + msg);
+            const data = await API.post('/api/records/export', payload);
+            const matched = data.total_matched != null ? data.total_matched : data.count;
+            alert(`导出成功\n文件：${data.filename}\n路径：${data.path}\n导出 ${data.count} 条（筛选命中 ${matched} 条）`);
+            closeExportModal();
+            return;
+        } catch (e) {
+            let msg = e.message || String(e);
+            let errCode = '';
+            try {
+                const err = JSON.parse(msg);
+                if (err.error) msg = err.error;
+                if (err.error_code) errCode = err.error_code;
+            } catch (_) { /* 非 JSON */ }
+
+            if (errCode === 'file_exists') {
+                const choice = await chooseExportConflictAction();
+                if (choice === 'replace') {
+                    payload.conflict_strategy = 'replace';
+                    continue;
+                }
+                if (choice === 'keep_both') {
+                    payload.conflict_strategy = 'keep_both';
+                    continue;
+                }
+                alert('已取消导出');
+                return;
+            }
+
+            alert('导出失败：' + msg);
+            return;
+        }
     }
 }
 
@@ -1107,6 +1150,20 @@ function setupSettingsPage() {
     document.getElementById('importSubmit').addEventListener('click', submitImport);
     document.getElementById('importModal').addEventListener('click', (ev) => {
         if (ev.target.id === 'importModal') closeImportModal();
+    });
+    document.getElementById('exportConflictReplace').addEventListener('click', () => {
+        resolveExportConflict('replace');
+    });
+    document.getElementById('exportConflictKeepBoth').addEventListener('click', () => {
+        resolveExportConflict('keep_both');
+    });
+    document.getElementById('exportConflictCancel').addEventListener('click', () => {
+        resolveExportConflict('cancel');
+    });
+    document.getElementById('exportConflictModal').addEventListener('click', (ev) => {
+        if (ev.target.id === 'exportConflictModal') {
+            resolveExportConflict('cancel');
+        }
     });
 
     document.getElementById('btnOpenCatManage').addEventListener('click', openCatManageModal);

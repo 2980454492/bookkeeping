@@ -278,6 +278,7 @@ ExportFileResult exportRecordsToFile(
     const fs::path& root_dir,
     const std::string& filename_input,
     const std::string& format,
+    const std::string& conflict_strategy,
     const std::vector<Record>& records) {
 
     ExportFileResult result;
@@ -312,12 +313,36 @@ ExportFileResult exportRecordsToFile(
         }
     }
 
+    std::string strategy = conflict_strategy;
+    std::transform(strategy.begin(), strategy.end(), strategy.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (strategy.empty()) strategy = "cancel";
+    if (strategy != "cancel" && strategy != "replace" && strategy != "keep_both") {
+        result.error = "无效的重名处理策略";
+        return result;
+    }
+
     result.filename = stem + ext;
     fs::path out_path = root_dir / result.filename;
 
     if (fs::exists(out_path)) {
-        result.error = "文件已存在，请更换文件名";
-        return result;
+        if (strategy == "cancel") {
+            result.error = "文件已存在";
+            return result;
+        }
+        if (strategy == "keep_both") {
+            int suffix = 1;
+            while (true) {
+                result.filename = stem + "(" + std::to_string(suffix) + ")" + ext;
+                out_path = root_dir / result.filename;
+                if (!fs::exists(out_path)) break;
+                ++suffix;
+                if (suffix > 9999) {
+                    result.error = "重名文件过多，无法自动命名";
+                    return result;
+                }
+            }
+        }
     }
 
     std::ostringstream content;
