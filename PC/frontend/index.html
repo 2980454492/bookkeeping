@@ -253,6 +253,14 @@
                     </span>
                     <span class="settings-menu-arrow">›</span>
                 </button>
+                <button type="button" class="settings-menu-item" id="btnOpenImport">
+                    <span class="settings-menu-icon">📥</span>
+                    <span class="settings-menu-text">
+                        <span class="settings-menu-label">导入数据</span>
+                        <span class="settings-menu-desc">导入文件并写入全部记录</span>
+                    </span>
+                    <span class="settings-menu-arrow">›</span>
+                </button>
             </div>
         </main>
 
@@ -354,6 +362,37 @@
                         <button type="button" class="btn btn-sm" id="exportSyncFilters">↺ 同步记账页筛选</button>
                         <button type="button" class="btn btn-sm" id="exportCancel">取消</button>
                         <button type="button" class="btn btn-primary" id="exportSubmit">导出</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 导入数据弹窗 -->
+        <div id="importModal" class="modal-overlay" style="display:none;">
+            <div class="modal modal-export">
+                <div class="modal-header">
+                    <h2>导入数据</h2>
+                    <button type="button" class="modal-close" id="importClose">&times;</button>
+                </div>
+                <div class="export-body">
+                    <div class="export-file-row">
+                        <label for="importFormat">格式</label>
+                        <select id="importFormat">
+                            <option value="csv">CSV（Excel 可打开）</option>
+                            <option value="xlsx">Excel (.xlsx)</option>
+                            <option value="txt">纯文本 (.txt)</option>
+                            <option value="json">JSON (.json)</option>
+                            <option value="tsv">TSV 制表符分隔</option>
+                        </select>
+                    </div>
+                    <div class="export-file-row">
+                        <label for="importFile">文件</label>
+                        <input type="file" id="importFile" accept=".csv,.xlsx,.txt,.json,.tsv">
+                    </div>
+                    <p class="export-hint">请选择数据文件。若结构可识别将全部导入；无法识别会直接报错，不写入数据。</p>
+                    <div class="modal-actions export-actions">
+                        <button type="button" class="btn btn-sm" id="importCancel">取消</button>
+                        <button type="button" class="btn btn-primary" id="importSubmit">导入</button>
                     </div>
                 </div>
             </div>

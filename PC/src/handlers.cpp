@@ -17,14 +17,14 @@
 //   DELETE /api/categories/l1/:id
 //   POST   /api/categories/reset     从 cwd 下 categories.json 恢复（路径见注）
 //   POST   /api/records/export       按筛选条件导出到应用根目录
+//   POST   /api/records/import       按格式导入记录（全量通过才写入）
 
 #include "handlers.h"
 #include "export_util.h"
+#include "import_util.h"
 
 #include <json.hpp>
-#include <sstream>
 #include <iostream>
-#include <algorithm>
 #include <cctype>
 
 using json = nlohmann::json;
@@ -219,6 +219,48 @@ void registerRoutes(httplib::Server& svr, Database& db,
             res.set_content(body.dump(), "application/json");
             std::cout << "[Export] 已导出 " << export_result.count << " 条 → "
                       << export_result.filepath << std::endl;
+        } catch (const std::exception& e) {
+            res.status = 500;
+            res.set_content(errorJson(e.what()).dump(), "application/json");
+        }
+    });
+
+    // POST /api/records/import — 导入导出同格式文件；全部解析成功后再批量写库
+    svr.Post("/api/records/import", [&](const httplib::Request& req, httplib::Response& res) {
+        try {
+            auto j = json::parse(req.body);
+            std::string format = j.value("format", "");
+            std::string content = j.value("content", "");
+            bool content_is_base64 = j.value("content_is_base64", false);
+
+            auto parsed = parseImportedRecords(format, content, content_is_base64);
+            if (!parsed.ok) {
+                res.status = 400;
+                res.set_content(errorJson(parsed.error).dump(), "application/json");
+                return;
+            }
+            if (parsed.records.empty()) {
+                res.status = 400;
+                res.set_content(errorJson("未解析到可导入的记录").dump(), "application/json");
+                return;
+            }
+
+            int inserted = db.createRecordsBatch(parsed.records);
+            if (inserted < 0) {
+                res.status = 500;
+                res.set_content(errorJson("导入写入失败").dump(), "application/json");
+                return;
+            }
+
+            json body = {
+                {"ok", true},
+                {"count", inserted}
+            };
+            res.set_content(body.dump(), "application/json");
+            std::cout << "[Import] 已导入 " << inserted << " 条" << std::endl;
+        } catch (const json::parse_error& e) {
+            res.status = 400;
+            res.set_content(errorJson("JSON 格式无效: " + std::string(e.what())).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 500;
             res.set_content(errorJson(e.what()).dump(), "application/json");

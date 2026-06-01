@@ -97,6 +97,7 @@ public:
     RecordListResult queryRecords(const RecordQuery& q);
     std::optional<Record> getRecord(int id);
     int createRecord(const Record& r);       // 成功返回新 id，失败返回 -1
+    int createRecordsBatch(const std::vector<Record>& records); // 事务批量写入；失败返回 -1
     bool updateRecord(int id, const Record& r);
     bool deleteRecord(int id);
 

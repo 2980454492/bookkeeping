@@ -994,6 +994,70 @@ function closeExportModal() {
     document.getElementById('exportModal').style.display = 'none';
 }
 
+function openImportModal() {
+    document.getElementById('importFormat').value = 'csv';
+    document.getElementById('importFile').value = '';
+    document.getElementById('importModal').style.display = 'flex';
+}
+
+function closeImportModal() {
+    document.getElementById('importModal').style.display = 'none';
+}
+
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(new Error('读取文件失败'));
+        reader.readAsText(file);
+    });
+}
+
+function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = typeof reader.result === 'string' ? reader.result : '';
+            const comma = result.indexOf(',');
+            resolve(comma >= 0 ? result.slice(comma + 1) : '');
+        };
+        reader.onerror = () => reject(new Error('读取文件失败'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function submitImport() {
+    const format = document.getElementById('importFormat').value;
+    const fileInput = document.getElementById('importFile');
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+        alert('请选择要导入的文件');
+        return;
+    }
+
+    try {
+        const contentIsBase64 = format === 'xlsx';
+        const content = contentIsBase64
+            ? await readFileAsBase64(file)
+            : await readFileAsText(file);
+        const data = await API.post('/api/records/import', {
+            format,
+            content,
+            content_is_base64: contentIsBase64
+        });
+        alert(`导入成功，共导入 ${data.count} 条记录`);
+        closeImportModal();
+        await loadRecords();
+    } catch (e) {
+        let msg = e.message || String(e);
+        try {
+            const err = JSON.parse(msg);
+            if (err.error) msg = err.error;
+        } catch (_) { /* 非 JSON */ }
+        alert('导入失败：' + msg);
+    }
+}
+
 async function submitExport() {
     const filename = document.getElementById('exportFilename').value.trim();
     if (!filename) {
@@ -1036,6 +1100,13 @@ function setupSettingsPage() {
     document.getElementById('expFilterCatL1').addEventListener('change', updateExportFilterL2Select);
     document.querySelectorAll('[data-exp-range]').forEach(btn => {
         btn.addEventListener('click', () => setExportQuickDateRange(btn.dataset.expRange));
+    });
+    document.getElementById('btnOpenImport').addEventListener('click', openImportModal);
+    document.getElementById('importClose').addEventListener('click', closeImportModal);
+    document.getElementById('importCancel').addEventListener('click', closeImportModal);
+    document.getElementById('importSubmit').addEventListener('click', submitImport);
+    document.getElementById('importModal').addEventListener('click', (ev) => {
+        if (ev.target.id === 'importModal') closeImportModal();
     });
 
     document.getElementById('btnOpenCatManage').addEventListener('click', openCatManageModal);

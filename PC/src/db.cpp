@@ -360,6 +360,55 @@ int Database::createRecord(const Record& r) {
     return new_id;
 }
 
+int Database::createRecordsBatch(const std::vector<Record>& records) {
+    if (records.empty()) return 0;
+
+    const char* sql = "INSERT INTO records (datetime, type, amount, category_l1, category_l2, note) "
+                      "VALUES (?, ?, ?, ?, ?, ?)";
+    sqlite3_stmt* stmt = nullptr;
+    sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr);
+    if (!stmt) return -1;
+
+    char* err = nullptr;
+    if (sqlite3_exec(db_, "BEGIN IMMEDIATE TRANSACTION", nullptr, nullptr, &err) != SQLITE_OK) {
+        if (err) sqlite3_free(err);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    int inserted = 0;
+    bool ok = true;
+    for (const auto& r : records) {
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+        sqlite3_bind_text(stmt, 1, r.datetime.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, r.type.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_double(stmt, 3, r.amount);
+        sqlite3_bind_text(stmt, 4, r.category_l1.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 5, r.category_l2.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 6, r.note.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            ok = false;
+            break;
+        }
+        ++inserted;
+    }
+
+    sqlite3_finalize(stmt);
+    if (!ok) {
+        sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
+        std::cerr << "[DB] 批量导入失败: " << sqlite3_errmsg(db_) << std::endl;
+        return -1;
+    }
+    if (sqlite3_exec(db_, "COMMIT", nullptr, nullptr, &err) != SQLITE_OK) {
+        if (err) sqlite3_free(err);
+        sqlite3_exec(db_, "ROLLBACK", nullptr, nullptr, nullptr);
+        return -1;
+    }
+    std::cout << "[DB] 批量创建记录: " << inserted << " 条" << std::endl;
+    return inserted;
+}
+
 bool Database::updateRecord(int id, const Record& r) {
     const char* sql = "UPDATE records SET datetime=?, type=?, amount=?, category_l1=?, "
                       "category_l2=?, note=?, updated_at=datetime('now','localtime') WHERE id=?";
