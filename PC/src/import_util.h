@@ -7,6 +7,10 @@
 struct ImportParseResult {
     bool ok = false;
     std::string error;
+    std::string error_code;
+    std::string detail;
+    std::string hint;
+    int row = 0;
     std::vector<Record> records;
 };
 

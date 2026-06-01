@@ -404,7 +404,13 @@
                         <label for="importFile">文件</label>
                         <input type="file" id="importFile" accept=".csv,.xlsx,.txt,.json,.tsv">
                     </div>
-                    <p class="export-hint">请选择数据文件。若结构可识别将全部导入；无法识别会直接报错，不写入数据。</p>
+                    <p class="export-hint">表头须为：时间, 类型, 金额, 一级分类, 二级分类, 备注。类型填「收入」或「支出」。推荐使用本应用导出的文件。</p>
+                    <div id="importError" class="import-error" role="alert" style="display:none;" aria-live="polite">
+                        <p class="import-error-title" id="importErrorTitle"></p>
+                        <p class="import-error-detail" id="importErrorDetail"></p>
+                        <p class="import-error-hint" id="importErrorHint"></p>
+                        <p class="import-error-meta" id="importErrorMeta"></p>
+                    </div>
                     <div class="modal-actions export-actions">
                         <button type="button" class="btn btn-sm" id="importCancel">取消</button>
                         <button type="button" class="btn btn-primary" id="importSubmit">导入</button>

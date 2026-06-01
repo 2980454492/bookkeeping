@@ -121,6 +121,39 @@ body {
     margin: 0 0 14px;
     line-height: 1.5;
 }
+.import-error {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fff2f0;
+    border: 1px solid #ffccc7;
+    font-size: 13px;
+    line-height: 1.55;
+}
+.import-error-title {
+    margin: 0 0 6px;
+    font-weight: 600;
+    color: #cf1322;
+}
+.import-error-detail,
+.import-error-hint,
+.import-error-meta {
+    margin: 0 0 4px;
+    color: #595959;
+}
+.import-error-hint {
+    color: #8c4a00;
+}
+.import-error-meta {
+    font-size: 12px;
+    color: #8c8c8c;
+    margin-bottom: 0;
+}
+.import-error-detail:empty,
+.import-error-hint:empty,
+.import-error-meta:empty {
+    display: none;
+}
 .export-filters { margin-bottom: 0; }
 .export-actions {
     margin-top: 16px;

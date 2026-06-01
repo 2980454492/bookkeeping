@@ -143,6 +143,24 @@ static json errorJson(const std::string& msg) {
     return {{"error", msg}};
 }
 
+static json importErrorJson(const ImportParseResult& parsed) {
+    json body = {{"error", parsed.error}};
+    if (!parsed.error_code.empty()) body["error_code"] = parsed.error_code;
+    if (!parsed.detail.empty()) body["detail"] = parsed.detail;
+    if (!parsed.hint.empty()) body["hint"] = parsed.hint;
+    if (parsed.row > 0) body["row"] = parsed.row;
+    return body;
+}
+
+static void logImportFailure(const ImportParseResult& parsed) {
+    std::cout << "[Import] 失败";
+    if (!parsed.error_code.empty()) std::cout << " [" << parsed.error_code << "]";
+    std::cout << ": " << parsed.error;
+    if (!parsed.detail.empty()) std::cout << " | " << parsed.detail;
+    if (parsed.row > 0) std::cout << " (行 " << parsed.row << ")";
+    std::cout << std::endl;
+}
+
 // ── 路由注册 ───────────────────────────────────────────────────────
 
 void registerRoutes(httplib::Server& svr, Database& db,
@@ -242,22 +260,47 @@ void registerRoutes(httplib::Server& svr, Database& db,
             std::string content = j.value("content", "");
             bool content_is_base64 = j.value("content_is_base64", false);
 
+            if (format.empty()) {
+                res.status = 400;
+                res.set_content(json{
+                    {"error", "未指定导入格式"},
+                    {"error_code", "missing_format"},
+                    {"hint", "请在请求中提供 format：csv、xlsx、txt、json 或 tsv"}
+                }.dump(), "application/json");
+                std::cout << "[Import] 失败 [missing_format]: 未指定导入格式" << std::endl;
+                return;
+            }
+
             auto parsed = parseImportedRecords(format, content, content_is_base64);
             if (!parsed.ok) {
                 res.status = 400;
-                res.set_content(errorJson(parsed.error).dump(), "application/json");
+                logImportFailure(parsed);
+                res.set_content(importErrorJson(parsed).dump(), "application/json");
                 return;
             }
             if (parsed.records.empty()) {
                 res.status = 400;
-                res.set_content(errorJson("未解析到可导入的记录").dump(), "application/json");
+                ImportParseResult empty_result;
+                empty_result.error_code = "no_records";
+                empty_result.error = "未解析到可导入的记录";
+                empty_result.detail = "表头已识别，但无有效数据行";
+                empty_result.hint = "请确认文件中除表头外还有收支记录";
+                logImportFailure(empty_result);
+                res.set_content(importErrorJson(empty_result).dump(), "application/json");
                 return;
             }
 
             int inserted = db.createRecordsBatch(parsed.records);
             if (inserted < 0) {
                 res.status = 500;
-                res.set_content(errorJson("导入写入失败").dump(), "application/json");
+                res.set_content(json{
+                    {"error", "导入写入数据库失败"},
+                    {"error_code", "db_write_failed"},
+                    {"detail", "已解析 " + std::to_string(parsed.records.size()) + " 条，但批量写入未成功"},
+                    {"hint", "请查看服务端日志或重试；若持续失败请检查数据库文件权限"}
+                }.dump(), "application/json");
+                std::cout << "[Import] 失败 [db_write_failed]: 批量写入失败，待写入 "
+                          << parsed.records.size() << " 条" << std::endl;
                 return;
             }
 
@@ -269,10 +312,20 @@ void registerRoutes(httplib::Server& svr, Database& db,
             std::cout << "[Import] 已导入 " << inserted << " 条" << std::endl;
         } catch (const json::parse_error& e) {
             res.status = 400;
-            res.set_content(errorJson("JSON 格式无效: " + std::string(e.what())).dump(), "application/json");
+            res.set_content(json{
+                {"error", "请求 JSON 格式无效"},
+                {"error_code", "request_json_invalid"},
+                {"detail", e.what()}
+            }.dump(), "application/json");
+            std::cout << "[Import] 失败 [request_json_invalid]: " << e.what() << std::endl;
         } catch (const std::exception& e) {
             res.status = 500;
-            res.set_content(errorJson(e.what()).dump(), "application/json");
+            res.set_content(json{
+                {"error", "导入过程发生服务器错误"},
+                {"error_code", "server_error"},
+                {"detail", e.what()}
+            }.dump(), "application/json");
+            std::cout << "[Import] 失败 [server_error]: " << e.what() << std::endl;
         }
     });
 

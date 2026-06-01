@@ -991,14 +991,104 @@ function closeExportModal() {
     document.getElementById('exportModal').style.display = 'none';
 }
 
+/** 解析 API 错误响应体（fetch 失败时 message 常为 JSON 字符串） */
+function parseApiErrorPayload(raw) {
+    const fallback = { error: raw || '未知错误' };
+    if (!raw || typeof raw !== 'string') return fallback;
+    try {
+        const err = JSON.parse(raw);
+        if (err && typeof err === 'object') return err;
+    } catch (_) { /* 非 JSON */ }
+    return fallback;
+}
+
+function clearImportError() {
+    const box = document.getElementById('importError');
+    if (!box) return;
+    box.style.display = 'none';
+    ['importErrorTitle', 'importErrorDetail', 'importErrorHint', 'importErrorMeta']
+        .forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '';
+        });
+}
+
+function showImportError(err, source = 'server') {
+    const box = document.getElementById('importError');
+    if (!box) return;
+    const title = err.error || '导入失败';
+    const detail = err.detail || '';
+    const hint = err.hint || '';
+    const parts = [];
+    if (err.error_code) parts.push('代码: ' + err.error_code);
+    if (err.row) parts.push('行号: ' + err.row);
+    if (source === 'client') parts.push('来源: 本地校验');
+    else if (source === 'server') parts.push('来源: 服务端');
+
+    document.getElementById('importErrorTitle').textContent = title;
+    document.getElementById('importErrorDetail').textContent = detail;
+    document.getElementById('importErrorHint').textContent = hint;
+    document.getElementById('importErrorMeta').textContent = parts.join(' · ');
+    box.style.display = 'block';
+
+    console.error('[Import] 失败', { source, ...err });
+}
+
+const IMPORT_EXT_BY_FORMAT = {
+    csv: ['.csv'],
+    tsv: ['.tsv', '.txt'],
+    txt: ['.txt'],
+    json: ['.json'],
+    xlsx: ['.xlsx']
+};
+
+function validateImportFileClient(format, file) {
+    if (!file) {
+        return {
+            error: '未选择文件',
+            error_code: 'client_no_file',
+            hint: '请点击「文件」选择要导入的数据文件'
+        };
+    }
+    if (file.size === 0) {
+        return {
+            error: '文件大小为 0',
+            error_code: 'client_empty_file',
+            hint: '请选择非空文件'
+        };
+    }
+    const name = (file.name || '').toLowerCase();
+    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '';
+    const allowed = IMPORT_EXT_BY_FORMAT[format] || [];
+    if (ext && allowed.length && !allowed.includes(ext)) {
+        return {
+            error: '文件扩展名与所选格式不一致',
+            error_code: 'client_format_mismatch',
+            detail: `已选格式：${format}，文件：${file.name}`,
+            hint: `请将导入格式改为与文件匹配，或选择扩展名为 ${allowed.join(' / ')} 的文件`
+        };
+    }
+    if (format === 'xlsx' && file.size < 100) {
+        return {
+            error: 'Excel 文件过小，可能已损坏',
+            error_code: 'client_xlsx_too_small',
+            detail: `文件大小 ${file.size} 字节`,
+            hint: '请确认文件完整，或使用本应用导出的 .xlsx'
+        };
+    }
+    return null;
+}
+
 function openImportModal() {
     document.getElementById('importFormat').value = 'csv';
     document.getElementById('importFile').value = '';
+    clearImportError();
     document.getElementById('importModal').style.display = 'flex';
 }
 
 function closeImportModal() {
     document.getElementById('importModal').style.display = 'none';
+    clearImportError();
 }
 
 let exportConflictResolver = null;
@@ -1148,6 +1238,8 @@ function setupSettingsPage() {
     document.getElementById('importClose').addEventListener('click', closeImportModal);
     document.getElementById('importCancel').addEventListener('click', closeImportModal);
     document.getElementById('importSubmit').addEventListener('click', submitImport);
+    document.getElementById('importFormat').addEventListener('change', clearImportError);
+    document.getElementById('importFile').addEventListener('change', clearImportError);
     document.getElementById('importModal').addEventListener('click', (ev) => {
         if (ev.target.id === 'importModal') closeImportModal();
     });

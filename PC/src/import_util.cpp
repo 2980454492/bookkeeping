@@ -48,10 +48,59 @@ bool parseAmount(const std::string& raw, double& out) {
     return out > 0 && std::isfinite(out);
 }
 
-ImportParseResult fail(const std::string& msg) {
+ImportParseResult failImport(
+    const std::string& code,
+    const std::string& error,
+    const std::string& detail = "",
+    const std::string& hint = "",
+    int row = 0) {
+
     ImportParseResult r;
-    r.error = msg;
+    r.error_code = code;
+    r.error = error;
+    r.detail = detail;
+    r.hint = hint;
+    r.row = row;
     return r;
+}
+
+void setRowError(ImportParseResult& out, const std::string& code, int row, const std::string& error) {
+    out.error_code = code;
+    out.row = row;
+    out.error = error;
+    out.hint = "请检查该行的时间、类型（收入/支出）、金额等字段是否符合要求";
+}
+
+std::string describeHeaderMismatch(const std::vector<std::string>& hdr) {
+    std::ostringstream oss;
+    oss << "期望表头：时间, 类型, 金额, 一级分类, 二级分类, 备注";
+    if (!hdr.empty()) {
+        oss << "；实际首行：";
+        size_t n = std::min(hdr.size(), static_cast<size_t>(6));
+        for (size_t i = 0; i < n; ++i) {
+            if (i > 0) oss << ", ";
+            std::string cell = trim(hdr[i]);
+            oss << (cell.empty() ? "(空)" : cell);
+        }
+        if (hdr.size() > 6) oss << ", …";
+    } else {
+        oss << "；未能读取到表头单元格";
+    }
+    return oss.str();
+}
+
+int countXlsxRows(const std::string& sheet_xml) {
+    int count = 0;
+    size_t pos = 0;
+    while (true) {
+        auto row_start = sheet_xml.find("<row", pos);
+        if (row_start == std::string::npos) break;
+        ++count;
+        auto row_end = sheet_xml.find("</row>", row_start);
+        if (row_end == std::string::npos) break;
+        pos = row_end + 6;
+    }
+    return count;
 }
 
 std::string stripUtf8Bom(const std::string& s) {
@@ -100,7 +149,8 @@ Record recordFromFields(
     ImportParseResult& out) {
 
     if (cols.size() < 3) {
-        out.error = "第 " + std::to_string(row_num) + " 行：列数不足";
+        setRowError(out, "row_insufficient_columns", row_num,
+                    "第 " + std::to_string(row_num) + " 行：列数不足（至少需要时间、类型、金额三列）");
         return {};
     }
 
@@ -108,12 +158,14 @@ Record recordFromFields(
     r.datetime = trim(cols[0]);
     auto type_opt = parseType(cols[1]);
     if (!type_opt) {
-        out.error = "第 " + std::to_string(row_num) + " 行：类型无效（应为「收入」或「支出」）";
+        setRowError(out, "row_invalid_type", row_num,
+                    "第 " + std::to_string(row_num) + " 行：类型无效（应为「收入」或「支出」）");
         return {};
     }
     r.type = *type_opt;
     if (!parseAmount(cols[2], r.amount)) {
-        out.error = "第 " + std::to_string(row_num) + " 行：金额无效";
+        setRowError(out, "row_invalid_amount", row_num,
+                    "第 " + std::to_string(row_num) + " 行：金额无效（须为正数）");
         return {};
     }
     r.category_l1 = cols.size() > 3 ? normalizeField(cols[3]) : "";
@@ -121,7 +173,8 @@ Record recordFromFields(
     r.note = cols.size() > 5 ? normalizeField(cols[5]) : "";
 
     if (r.datetime.empty()) {
-        out.error = "第 " + std::to_string(row_num) + " 行：时间为空";
+        setRowError(out, "row_empty_datetime", row_num,
+                    "第 " + std::to_string(row_num) + " 行：时间为空");
         return {};
     }
     return r;
@@ -152,7 +205,11 @@ ImportParseResult parseCsvTsv(const std::string& content, char sep) {
         auto cols = splitDelimitedLine(line, sep);
         if (!header_checked) {
             if (!headerMatches(cols)) {
-                return fail("无法识别表头，请使用本应用导出的 CSV/TSV 文件");
+                return failImport(
+                    "header_mismatch",
+                    "无法识别 CSV/TSV 表头",
+                    describeHeaderMismatch(cols),
+                    "请使用本应用「导出」生成的 CSV/TSV，或确保首行为：时间,类型,金额,一级分类,二级分类,备注");
             }
             header_checked = true;
             continue;
@@ -162,7 +219,13 @@ ImportParseResult parseCsvTsv(const std::string& content, char sep) {
         result.records.push_back(std::move(r));
     }
 
-    if (!header_checked) return fail("文件为空或格式无法识别");
+    if (!header_checked) {
+        return failImport(
+            "empty_file",
+            "CSV/TSV 文件为空或无可读行",
+            "文件中未找到非空数据行",
+            "请确认已选择正确文件，且首行包含表头");
+    }
     result.ok = true;
     return result;
 }
@@ -171,30 +234,49 @@ ImportParseResult parseJsonContent(const std::string& content) {
     ImportParseResult result;
     try {
         auto j = json::parse(content);
-        if (!j.is_array()) return fail("JSON 格式无效：根节点应为数组");
+        if (!j.is_array()) {
+            return failImport(
+                "json_invalid_root",
+                "JSON 格式无效",
+                "根节点应为数组 []",
+                "请使用本应用导出的 JSON 文件");
+        }
 
         int idx = 0;
         for (const auto& item : j) {
             ++idx;
-            if (!item.is_object()) return fail("第 " + std::to_string(idx) + " 条：应为对象");
+            if (!item.is_object()) {
+                return failImport("json_invalid_item", "第 " + std::to_string(idx) + " 条：应为对象",
+                                  "", "每条记录应为 JSON 对象", idx);
+            }
 
             Record r;
-            if (!item.contains("datetime") || !item["datetime"].is_string())
-                return fail("第 " + std::to_string(idx) + " 条：缺少 datetime");
+            if (!item.contains("datetime") || !item["datetime"].is_string()) {
+                return failImport("json_missing_field", "第 " + std::to_string(idx) + " 条：缺少 datetime",
+                                  "", "需包含字符串字段 datetime", idx);
+            }
             r.datetime = trim(item["datetime"].get<std::string>());
 
-            if (!item.contains("type") || !item["type"].is_string())
-                return fail("第 " + std::to_string(idx) + " 条：缺少 type");
+            if (!item.contains("type") || !item["type"].is_string()) {
+                return failImport("json_missing_field", "第 " + std::to_string(idx) + " 条：缺少 type",
+                                  "", "type 应为 income 或 expense（或中文 收入/支出）", idx);
+            }
             auto type_opt = parseType(item["type"].get<std::string>());
-            if (!type_opt)
-                return fail("第 " + std::to_string(idx) + " 条：type 无效");
+            if (!type_opt) {
+                return failImport("json_invalid_type", "第 " + std::to_string(idx) + " 条：type 无效",
+                                  "", "type 应为 income/expense 或 收入/支出", idx);
+            }
             r.type = *type_opt;
 
-            if (!item.contains("amount") || !item["amount"].is_number())
-                return fail("第 " + std::to_string(idx) + " 条：缺少 amount");
+            if (!item.contains("amount") || !item["amount"].is_number()) {
+                return failImport("json_missing_field", "第 " + std::to_string(idx) + " 条：缺少 amount",
+                                  "", "需包含数字字段 amount", idx);
+            }
             r.amount = item["amount"].get<double>();
-            if (r.amount <= 0 || !std::isfinite(r.amount))
-                return fail("第 " + std::to_string(idx) + " 条：金额无效");
+            if (r.amount <= 0 || !std::isfinite(r.amount)) {
+                return failImport("json_invalid_amount", "第 " + std::to_string(idx) + " 条：金额无效",
+                                  "", "amount 须为大于 0 的数字", idx);
+            }
 
             r.category_l1 = item.value("category_l1", "");
             r.category_l2 = item.value("category_l2", "");
@@ -203,13 +285,19 @@ ImportParseResult parseJsonContent(const std::string& content) {
             r.category_l2 = normalizeField(r.category_l2);
             r.note = normalizeField(r.note);
 
-            if (r.datetime.empty())
-                return fail("第 " + std::to_string(idx) + " 条：datetime 为空");
+            if (r.datetime.empty()) {
+                return failImport("json_empty_datetime", "第 " + std::to_string(idx) + " 条：datetime 为空",
+                                  "", "", idx);
+            }
 
             result.records.push_back(std::move(r));
         }
-    } catch (const json::parse_error&) {
-        return fail("JSON 格式无法解析");
+    } catch (const json::parse_error& e) {
+        return failImport(
+            "json_parse_error",
+            "JSON 格式无法解析",
+            e.what(),
+            "请检查文件是否为合法 JSON，或使用本应用导出的 JSON");
     }
     result.ok = true;
     return result;
@@ -217,8 +305,13 @@ ImportParseResult parseJsonContent(const std::string& content) {
 
 ImportParseResult parseTxtContent(const std::string& content) {
     ImportParseResult result;
-    if (content.find("个人记账导出") == std::string::npos)
-        return fail("无法识别的文本格式");
+    if (content.find("个人记账导出") == std::string::npos) {
+        return failImport(
+            "txt_unrecognized",
+            "无法识别的文本格式",
+            "文件中未找到「个人记账导出」标记",
+            "请使用本应用导出的 .txt 文件");
+    }
 
     std::istringstream in(content);
     std::string line;
@@ -229,7 +322,8 @@ ImportParseResult parseTxtContent(const std::string& content) {
     auto flushRecord = [&]() {
         if (!in_record) return true;
         if (current.datetime.empty() || current.type.empty() || current.amount <= 0) {
-            result.error = "第 " + std::to_string(record_num) + " 条记录字段不完整";
+            setRowError(result, "txt_incomplete_record", record_num,
+                        "第 " + std::to_string(record_num) + " 条记录字段不完整");
             return false;
         }
         result.records.push_back(current);
@@ -261,13 +355,15 @@ ImportParseResult parseTxtContent(const std::string& content) {
         } else if (key == "类型") {
             auto type_opt = parseType(val);
             if (!type_opt) {
-                result.error = "第 " + std::to_string(record_num) + " 条：类型无效";
+                setRowError(result, "txt_invalid_type", record_num,
+                            "第 " + std::to_string(record_num) + " 条：类型无效");
                 return result;
             }
             current.type = *type_opt;
         } else if (key == "金额") {
             if (!parseAmount(val, current.amount)) {
-                result.error = "第 " + std::to_string(record_num) + " 条：金额无效";
+                setRowError(result, "txt_invalid_amount", record_num,
+                            "第 " + std::to_string(record_num) + " 条：金额无效");
                 return result;
             }
         } else if (key == "一级分类") {
@@ -280,8 +376,13 @@ ImportParseResult parseTxtContent(const std::string& content) {
     }
 
     if (!flushRecord()) return result;
-    if (record_num == 0 && result.records.empty())
-        return fail("未找到可导入的记录");
+    if (record_num == 0 && result.records.empty()) {
+        return failImport(
+            "txt_no_records",
+            "未找到可导入的记录",
+            "文本中无完整收支条目",
+            "请确认文件为本应用导出的记账文本");
+    }
 
     result.ok = true;
     return result;
@@ -539,12 +640,21 @@ ImportParseResult parseXlsxBinary(const std::string& binary) {
     if (binary.size() < 4 ||
         static_cast<unsigned char>(binary[0]) != 0x50 ||
         static_cast<unsigned char>(binary[1]) != 0x4B) {
-        return fail("不是有效的 Excel (.xlsx) 文件");
+        return failImport(
+            "xlsx_invalid_zip",
+            "不是有效的 Excel (.xlsx) 文件",
+            "文件头不是 ZIP 格式（xlsx 实为压缩包）",
+            "请确认扩展名为 .xlsx，且未选错 CSV/文本格式");
     }
 
     std::string sheet;
-    if (!extractZipEntry(binary, "xl/worksheets/sheet1.xml", sheet))
-        return fail("无法读取 Excel 工作表");
+    if (!extractZipEntry(binary, "xl/worksheets/sheet1.xml", sheet)) {
+        return failImport(
+            "xlsx_sheet_missing",
+            "无法读取 Excel 第一个工作表",
+            "压缩包中缺少 xl/worksheets/sheet1.xml",
+            "请使用本应用「导出」生成的 .xlsx，或将数据放在第一个工作表后重试");
+    }
     std::string shared_xml;
     std::vector<std::string> shared_strings;
     if (extractZipEntry(binary, "xl/sharedStrings.xml", shared_xml)) {
@@ -594,8 +704,13 @@ ImportParseResult parseXlsxBinary(const std::string& binary) {
         }
 
         if (!header_checked) {
-            if (!headerMatches(cols))
-                return fail("无法识别 Excel 表头，请使用本应用导出的 .xlsx 文件");
+            if (!headerMatches(cols)) {
+                return failImport(
+                    "xlsx_header_mismatch",
+                    "无法识别 Excel 表头",
+                    describeHeaderMismatch(cols),
+                    "请使用本应用导出的 .xlsx；第三方 Excel 另存后表头或工作表结构可能不兼容");
+            }
             header_checked = true;
             continue;
         }
@@ -608,7 +723,21 @@ ImportParseResult parseXlsxBinary(const std::string& binary) {
         result.records.push_back(std::move(r));
     }
 
-    if (!header_checked) return fail("Excel 文件为空或格式无法识别");
+    if (!header_checked) {
+        int xlsx_rows = countXlsxRows(sheet);
+        if (xlsx_rows == 0) {
+            return failImport(
+                "xlsx_empty_sheet",
+                "Excel 第一个工作表为空",
+                "sheet1 中未找到任何数据行",
+                "请确认记账数据在第一个工作表；多工作表文件请只保留 sheet1 或改用 CSV 导入");
+        }
+        return failImport(
+            "xlsx_unreadable",
+            "Excel 内容无法解析",
+            "共发现 " + std::to_string(xlsx_rows) + " 行，但未能识别表头",
+            "请勿使用 WPS/Excel 多 sheet 仅写在 sheet2 的文件；建议用本应用导出或选 CSV 格式");
+    }
     result.ok = true;
     return result;
 }
@@ -625,10 +754,21 @@ ImportParseResult parseImportedRecords(
     std::transform(fmt.begin(), fmt.end(), fmt.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-    if (std::find(kFormats.begin(), kFormats.end(), fmt) == kFormats.end())
-        return fail("不支持的导入格式");
+    if (std::find(kFormats.begin(), kFormats.end(), fmt) == kFormats.end()) {
+        return failImport(
+            "unsupported_format",
+            "不支持的导入格式",
+            "format=" + format,
+            "可选：txt、csv、tsv、json、xlsx");
+    }
 
-    if (content.empty()) return fail("文件内容为空");
+    if (content.empty()) {
+        return failImport(
+            "empty_content",
+            "文件内容为空",
+            "",
+            "请选择非空文件，并确认导入格式与文件类型一致");
+    }
 
     if (fmt == "csv") return parseCsvTsv(content, ',');
     if (fmt == "tsv") return parseCsvTsv(content, '\t');
@@ -636,6 +776,12 @@ ImportParseResult parseImportedRecords(
     if (fmt == "txt") return parseTxtContent(content);
 
     std::string binary = content_is_base64 ? base64Decode(content) : content;
-    if (binary.empty()) return fail("Excel 文件内容无效");
+    if (binary.empty()) {
+        return failImport(
+            "xlsx_decode_failed",
+            "Excel 文件内容无效",
+            "Base64 解码后无数据或文件损坏",
+            "请重新选择 .xlsx 文件，并确保导入格式选为 Excel (.xlsx)");
+    }
     return parseXlsxBinary(binary);
 }
