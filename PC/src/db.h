@@ -79,6 +79,12 @@ struct CategoryL2 {
     int sort_order = 0;
 };
 
+/** 导入时自动新建分类的统计 */
+struct ImportCategoryStats {
+    int created_l1 = 0;
+    int created_l2 = 0;
+};
+
 // ── 数据库操作类 ───────────────────────────────────────────────────
 
 class Database {
@@ -111,6 +117,11 @@ public:
     int  createCategoryL2(const CategoryL2& cat);
     bool updateCategoryL2(int id, const CategoryL2& cat);
     bool deleteCategoryL2(int id);
+
+    /** 按导入记录中的分类名补齐缺失的一级/二级分类（支出才建二级） */
+    bool ensureCategoriesForRecords(
+        const std::vector<Record>& records,
+        ImportCategoryStats& stats);
 
     /** 清空分类表后重新从 JSON 导入（不删除 records 表数据） */
     bool resetCategories(const std::string& categories_json_path);

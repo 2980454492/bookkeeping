@@ -1157,16 +1157,25 @@ async function submitImport() {
             content,
             content_is_base64: contentIsBase64
         });
-        alert(`导入成功，共导入 ${data.count} 条记录`);
+        let successMsg = `导入成功，共导入 ${data.count} 条记录`;
+        const newL1 = data.categories_created_l1 || 0;
+        const newL2 = data.categories_created_l2 || 0;
+        if (newL1 > 0 || newL2 > 0) {
+            successMsg += `\n新建分类：一级 ${newL1} 个`;
+            if (newL2 > 0) successMsg += `，二级 ${newL2} 个`;
+        }
+        alert(successMsg);
         closeImportModal();
         await loadRecords();
+        if (newL1 > 0 || newL2 > 0) await loadCategories();
     } catch (e) {
-        let msg = e.message || String(e);
-        try {
-            const err = JSON.parse(msg);
-            if (err.error) msg = err.error;
-        } catch (_) { /* 非 JSON */ }
-        alert('导入失败：' + msg);
+        const err = parseApiErrorPayload(e.message || String(e));
+        if (typeof showImportError === 'function') {
+            showImportError(err, 'server');
+        } else {
+            let msg = err.error || String(e);
+            alert('导入失败：' + msg);
+        }
     }
 }
 

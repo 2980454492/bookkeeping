@@ -561,6 +561,98 @@ bool Database::deleteCategoryL2(int id) {
     }
 }
 
+bool Database::ensureCategoriesForRecords(
+    const std::vector<Record>& records,
+    ImportCategoryStats& stats) {
+
+    stats = {};
+    if (records.empty()) return true;
+
+    std::vector<CategoryL1> cache = getCategories("");
+
+    auto find_l1 = [&](const std::string& type, const std::string& name) -> int {
+        for (const auto& c : cache) {
+            if (c.type == type && c.name == name) return c.id;
+        }
+        return 0;
+    };
+
+    auto has_l2 = [&](int l1_id, const std::string& name) -> bool {
+        for (const auto& c : cache) {
+            if (c.id != l1_id) continue;
+            for (const auto& sub : c.subcategories) {
+                if (sub == name) return true;
+            }
+            return false;
+        }
+        return false;
+    };
+
+    auto next_l1_sort = [&](const std::string& type) -> int {
+        int max_order = -1;
+        for (const auto& c : cache) {
+            if (c.type == type && c.sort_order > max_order) max_order = c.sort_order;
+        }
+        return max_order + 1;
+    };
+
+    for (const auto& r : records) {
+        if (r.category_l1.empty()) continue;
+
+        int l1_id = find_l1(r.type, r.category_l1);
+        if (l1_id == 0) {
+            CategoryL1 cat;
+            cat.name = r.category_l1;
+            cat.type = r.type;
+            cat.icon = "";
+            cat.sort_order = next_l1_sort(r.type);
+            l1_id = createCategoryL1(cat);
+            if (l1_id <= 0) return false;
+
+            CategoryL1 added;
+            added.id = l1_id;
+            added.name = cat.name;
+            added.type = cat.type;
+            added.icon = cat.icon;
+            added.sort_order = cat.sort_order;
+            cache.push_back(std::move(added));
+            ++stats.created_l1;
+            std::cout << "[Import] 新建一级分类: " << cat.name << " (" << cat.type << ")"
+                      << std::endl;
+        }
+
+        if (r.type != "expense" || r.category_l2.empty()) continue;
+        if (has_l2(l1_id, r.category_l2)) continue;
+
+        int l2_sort = 0;
+        for (auto& c : cache) {
+            if (c.id == l1_id) {
+                l2_sort = static_cast<int>(c.subcategories.size());
+                break;
+            }
+        }
+
+        CategoryL2 cat2;
+        cat2.l1_id = l1_id;
+        cat2.name = r.category_l2;
+        cat2.sort_order = l2_sort;
+        int l2_id = createCategoryL2(cat2);
+        if (l2_id <= 0) return false;
+
+        for (auto& c : cache) {
+            if (c.id == l1_id) {
+                c.subcategories.push_back(r.category_l2);
+                break;
+            }
+        }
+        ++stats.created_l2;
+        std::cout << "[Import] 新建二级分类: " << r.category_l2
+                  << " ← " << r.category_l1 << std::endl;
+    }
+
+    return true;
+}
+
 bool Database::exportCategoriesToJson(const std::string& json_path) const {
     if (!db_) return false;
     if (json_path.empty()) {

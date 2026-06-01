@@ -290,6 +290,32 @@ void registerRoutes(httplib::Server& svr, Database& db,
                 return;
             }
 
+            ImportCategoryStats cat_stats;
+            if (!db.ensureCategoriesForRecords(parsed.records, cat_stats)) {
+                res.status = 500;
+                res.set_content(json{
+                    {"error", "导入时创建分类失败"},
+                    {"error_code", "category_create_failed"},
+                    {"hint", "请查看服务端日志后重试"}
+                }.dump(), "application/json");
+                std::cout << "[Import] 失败 [category_create_failed]" << std::endl;
+                return;
+            }
+            if (cat_stats.created_l1 > 0 || cat_stats.created_l2 > 0) {
+                if (!persistCategoriesFile(db, g_categories_json_path)) {
+                    res.status = 500;
+                    res.set_content(json{
+                        {"error", "分类已创建但写入 categories.json 失败"},
+                        {"error_code", "category_persist_failed"},
+                        {"detail", "新建一级 " + std::to_string(cat_stats.created_l1)
+                            + " 个，二级 " + std::to_string(cat_stats.created_l2) + " 个"},
+                        {"hint", "记录尚未导入，请检查应用目录写权限后重试"}
+                    }.dump(), "application/json");
+                    std::cout << "[Import] 失败 [category_persist_failed]" << std::endl;
+                    return;
+                }
+            }
+
             int inserted = db.createRecordsBatch(parsed.records);
             if (inserted < 0) {
                 res.status = 500;
@@ -306,10 +332,17 @@ void registerRoutes(httplib::Server& svr, Database& db,
 
             json body = {
                 {"ok", true},
-                {"count", inserted}
+                {"count", inserted},
+                {"categories_created_l1", cat_stats.created_l1},
+                {"categories_created_l2", cat_stats.created_l2}
             };
             res.set_content(body.dump(), "application/json");
-            std::cout << "[Import] 已导入 " << inserted << " 条" << std::endl;
+            std::cout << "[Import] 已导入 " << inserted << " 条";
+            if (cat_stats.created_l1 > 0 || cat_stats.created_l2 > 0) {
+                std::cout << "，新建分类：一级 " << cat_stats.created_l1
+                          << " 个，二级 " << cat_stats.created_l2 << " 个";
+            }
+            std::cout << std::endl;
         } catch (const json::parse_error& e) {
             res.status = 400;
             res.set_content(json{
