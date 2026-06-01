@@ -112,7 +112,16 @@ int main(int argc, char* argv[]) {
     // 默认 18080，与 run.sh / README 一致；可选：./bookkeeping 8080
     int port = 18080;
     if (argc > 1) {
-        port = std::stoi(argv[1]);
+        try {
+            port = std::stoi(argv[1]);
+            if (port < 1 || port > 65535) {
+                std::cerr << "[Main] 错误: 端口号需在 1-65535 之间，收到: " << argv[1] << std::endl;
+                return 1;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[Main] 错误: 无法解析端口号 '" << argv[1] << "'，请使用数字端口，如: bookkeeping.exe 18080" << std::endl;
+            return 1;
+        }
     }
 
     std::cout << "══════════════════════════════════════" << std::endl;

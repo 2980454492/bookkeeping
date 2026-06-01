@@ -34,6 +34,11 @@ target_link_libraries(bookkeeping PRIVATE
     ZLIB::ZLIB
 )
 
+# Windows 上 httplib.h 需要 Winsock2
+if(WIN32)
+    target_link_libraries(bookkeeping PRIVATE ws2_32)
+endif()
+
 # ── 将资源文件复制到构建目录 ───────────────────────────────────
 # 用「始终执行」的自定义目标而非 POST_BUILD：POST_BUILD 只在可执行文件重新链接时才运行，
 # 仅修改 frontend/ 等资源（C++ 源码未变）时不会触发，导致 build/ 下前端文件停留在旧版本。
