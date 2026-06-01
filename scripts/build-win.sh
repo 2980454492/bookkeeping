@@ -4,8 +4,8 @@
 # 在 WSL/Linux 中生成 bookkeeping-server.exe（无需 Visual Studio）
 #
 # 用法:
-#   ./PC/scripts/cross-compile.sh          # 正常编译
-#   ./PC/scripts/cross-compile.sh clean    # 清除缓存后编译
+#   ./scripts/build-win.sh          # 正常编译
+#   ./scripts/build-win.sh clean    # 清除缓存后编译
 # ═══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -23,8 +23,8 @@ section() { echo ""; echo -e "${BOLD}── $* ──${NC}"; echo ""; }
 
 # ── 路径常量 ──────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PC_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_DIR="$(dirname "$PC_DIR")"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+SERVER_DIR="$PROJECT_DIR/server"
 BUILD_DIR="$PROJECT_DIR/build-mingw"
 DEPS_DIR="$BUILD_DIR/_deps"
 DIST_DIR="$PROJECT_DIR/dist/Bookkeeping"
@@ -99,16 +99,16 @@ fi
 
 # 1f. 检查项目源文件
 REQUIRED_FILES=(
-    "$PC_DIR/src/main.cpp"
-    "$PC_DIR/src/db.cpp"
-    "$PC_DIR/src/handlers.cpp"
-    "$PC_DIR/src/export_util.cpp"
-    "$PC_DIR/src/import_util.cpp"
-    "$PC_DIR/libs/httplib.h"
-    "$PC_DIR/libs/json.hpp"
-    "$PC_DIR/CMakeLists.txt"
-    "$PC_DIR/frontend/index.html"
-    "$PC_DIR/categories.json"
+    "$SERVER_DIR/src/main.cpp"
+    "$SERVER_DIR/src/db.cpp"
+    "$SERVER_DIR/src/handlers.cpp"
+    "$SERVER_DIR/src/export_util.cpp"
+    "$SERVER_DIR/src/import_util.cpp"
+    "$SERVER_DIR/vendor/httplib.h"
+    "$SERVER_DIR/vendor/json.hpp"
+    "$SERVER_DIR/CMakeLists.txt"
+    "$SERVER_DIR/frontend/index.html"
+    "$SERVER_DIR/categories.json"
 )
 MISSING_FILES=()
 for f in "${REQUIRED_FILES[@]}"; do
@@ -124,8 +124,8 @@ if [ ${#MISSING_FILES[@]} -gt 0 ]; then
     echo ""
     echo "  请确认项目目录完整。httplib.h 和 json.hpp 需要手动下载："
     echo ""
-    echo "    curl -L 'https://cdn.jsdelivr.net/gh/yhirose/cpp-httplib@v0.16.3/httplib.h' -o PC/libs/httplib.h"
-    echo "    curl -L 'https://cdn.jsdelivr.net/gh/nlohmann/json@v3.11.3/single_include/nlohmann/json.hpp' -o PC/libs/json.hpp"
+    echo "    curl -L 'https://cdn.jsdelivr.net/gh/yhirose/cpp-httplib@v0.16.3/httplib.h' -o server/vendor/httplib.h"
+    echo "    curl -L 'https://cdn.jsdelivr.net/gh/nlohmann/json@v3.11.3/single_include/nlohmann/json.hpp' -o server/vendor/json.hpp"
     echo ""
     exit 1
 fi
@@ -190,7 +190,7 @@ except Exception as e:
             echo ""
             echo "  解决办法: 删除损坏文件后重试"
             echo "    rm $DEPS_DIR/$SQLITE_ZIP"
-            echo "    ./PC/scripts/cross-compile.sh"
+            echo "    ./scripts/build-win.sh"
             echo ""
             rm -f "$SQLITE_ZIP"
             exit 1
@@ -292,7 +292,7 @@ if [ ! -f "$ZLIB_DIR/.built" ]; then
             echo ""
             echo "  解决办法: 删除损坏文件后重试"
             echo "    rm $DEPS_DIR/$ZLIB_TGZ"
-            echo "    ./PC/scripts/cross-compile.sh"
+            echo "    ./scripts/build-win.sh"
             echo ""
             rm -f "$ZLIB_TGZ"
             exit 1
@@ -350,8 +350,8 @@ info "运行 CMake..."
 
 # 捕获 CMake 输出用于诊断
 CMAKE_LOG=$(mktemp)
-if ! cmake "$PC_DIR" \
-    -DCMAKE_TOOLCHAIN_FILE="$PC_DIR/cmake/toolchain-mingw64.cmake" \
+if ! cmake "$SERVER_DIR" \
+    -DCMAKE_TOOLCHAIN_FILE="$PROJECT_DIR/scripts/toolchain-win.cmake" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="$SQLITE3_INC;$ZLIB_INC" \
     -DSQLite3_INCLUDE_DIR="$SQLITE3_INC" \
@@ -480,18 +480,18 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
 cp "$EXE_PATH" "$DIST_DIR/bookkeeping-server.exe"
-cp "$PC_DIR/categories.json" "$DIST_DIR/"
+cp "$SERVER_DIR/categories.json" "$DIST_DIR/"
 
 # 复制前端文件
 if command -v rsync &>/dev/null; then
     rsync -a --exclude='.git' --exclude='*.swp' --exclude='*~' \
-        "$PC_DIR/frontend/" "$DIST_DIR/frontend/"
+        "$SERVER_DIR/frontend/" "$DIST_DIR/frontend/"
 else
-    cp -r "$PC_DIR/frontend" "$DIST_DIR/frontend"
+    cp -r "$SERVER_DIR/frontend" "$DIST_DIR/frontend"
 fi
 
 # 复制 bat 启动器
-BAT_LAUNCHER="$PC_DIR/packaging/launcher/启动个人记账.bat"
+BAT_LAUNCHER="$PROJECT_DIR/scripts/run.bat"
 if [ -f "$BAT_LAUNCHER" ]; then
     cp "$BAT_LAUNCHER" "$DIST_DIR/"
 fi
@@ -510,7 +510,7 @@ echo "  EXE 文件: bookkeeping-server.exe ($EXE_SIZE)"
 echo ""
 echo "  在 Windows 中使用:"
 echo "    1. 复制 dist/Bookkeeping/ 到 Windows 任意目录"
-echo "    2. 双击 启动个人记账.bat"
+echo "    2. 双击 run.bat"
 echo "    3. 浏览器访问 http://127.0.0.1:18080"
 echo ""
 echo "  💡 如果 Windows 上报缺失 DLL 错误:"

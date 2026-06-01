@@ -1,5 +1,5 @@
 # CMake 工具链文件：x86_64-w64-mingw32 交叉编译
-# 用法: cmake -DCMAKE_TOOLCHAIN_FILE=PC/cmake/toolchain-mingw64.cmake ...
+# 用法: cmake -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-win.cmake ...
 
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)

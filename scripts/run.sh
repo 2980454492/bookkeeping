@@ -9,7 +9,7 @@ BUILD_DIR="$PROJECT_DIR/build"
 echo "🔨 正在编译..."
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
-cmake "$SCRIPT_DIR" -DCMAKE_BUILD_TYPE=Release
+cmake "$PROJECT_DIR/server" -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j$(nproc)
 echo "✅ 编译完成。"
 echo ""

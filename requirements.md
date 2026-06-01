@@ -21,7 +21,7 @@
 
 ## 0. PC 端实现状态总览
 
-> 以下对照 **当前仓库 `PC/` 目录** 的实际交付情况（2026-06-01）。图例：✅ 已实现 · 🔶 部分实现 · ⏳ 未实现
+> 以下对照 **当前仓库 `server/` 目录** 的实际交付情况（2026-06-01）。图例：✅ 已实现 · 🔶 部分实现 · ⏳ 未实现
 
 | 模块 | 状态 | 说明 |
 |------|:----:|------|
@@ -146,7 +146,7 @@
 
 #### 平台一：PC 桌面端 🖥️
 
-> **V1 当前交付**：`bookkeeping` 可执行文件 + 浏览器访问 `http://127.0.0.1:18080`（见 `PC/run.sh`）。  
+> **V1 当前交付**：`bookkeeping` 可执行文件 + 浏览器访问 `http://127.0.0.1:18080`（见 `scripts/run.sh`）。  
 > **后续目标**：内嵌 WebView2 原生窗口；前端可择机迁移至 Vue 3，后端可择机迁移至 Drogon（接口保持 REST 即可）。
 
 > **核心思路（目标架构）**：C++ 主程序 + 内嵌 WebView 渲染前端。用户看到的是一个原生桌面窗口，不是浏览器。
@@ -880,6 +880,6 @@ CREATE TABLE budgets (
 
 ---
 
-> **15 项产品决策仍然有效。** PC V1 核心已可日常使用（`PC/run.sh` 或浏览器打开 `127.0.0.1:18080`）。  
-> **Windows 安装包**：见 [`PC/packaging/DESIGN.md`](PC/packaging/DESIGN.md)（Inno Setup + `build-release.ps1`）。  
+> **15 项产品决策仍然有效。** V1 核心已可日常使用（`scripts/run.sh` 或浏览器打开 `127.0.0.1:18080`）。  
+> **Windows 安装包**：在 WSL 中运行 `./scripts/build-win.sh` 交叉编译生成 `.exe`，将 `dist/Bookkeeping/` 复制到 Windows 即可。  
 > **建议下一步**：① 按 DESIGN 打出 Setup.exe 并虚拟机实测；② WebView2 壳替换 bat；③ `/api/stats` 与饼图/折线图。

@@ -25,7 +25,7 @@ add_executable(bookkeeping ${SOURCES})
 
 target_include_directories(bookkeeping PRIVATE
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/libs    # httplib.h + json.hpp
+    ${CMAKE_SOURCE_DIR}/vendor    # httplib.h + json.hpp
 )
 
 target_link_libraries(bookkeeping PRIVATE
