@@ -45,7 +45,7 @@ bool parseAmount(const std::string& raw, double& out) {
     } catch (...) {
         return false;
     }
-    return out > 0 && std::isfinite(out);
+    return out >= 0 && std::isfinite(out);
 }
 
 ImportParseResult failImport(
@@ -165,7 +165,7 @@ Record recordFromFields(
     r.type = *type_opt;
     if (!parseAmount(cols[2], r.amount)) {
         setRowError(out, "row_invalid_amount", row_num,
-                    "第 " + std::to_string(row_num) + " 行：金额无效（须为正数）");
+                    "第 " + std::to_string(row_num) + " 行：金额无效（须为不小于 0 的数字）");
         return {};
     }
     r.category_l1 = cols.size() > 3 ? normalizeField(cols[3]) : "";
@@ -273,9 +273,9 @@ ImportParseResult parseJsonContent(const std::string& content) {
                                   "", "需包含数字字段 amount", idx);
             }
             r.amount = item["amount"].get<double>();
-            if (r.amount <= 0 || !std::isfinite(r.amount)) {
+            if (r.amount < 0 || !std::isfinite(r.amount)) {
                 return failImport("json_invalid_amount", "第 " + std::to_string(idx) + " 条：金额无效",
-                                  "", "amount 须为大于 0 的数字", idx);
+                                  "", "amount 须为不小于 0 的数字", idx);
             }
 
             r.category_l1 = item.value("category_l1", "");
@@ -317,11 +317,12 @@ ImportParseResult parseTxtContent(const std::string& content) {
     std::string line;
     Record current;
     bool in_record = false;
+    bool amount_set = false;
     int record_num = 0;
 
     auto flushRecord = [&]() {
         if (!in_record) return true;
-        if (current.datetime.empty() || current.type.empty() || current.amount <= 0) {
+        if (current.datetime.empty() || current.type.empty() || !amount_set) {
             setRowError(result, "txt_incomplete_record", record_num,
                         "第 " + std::to_string(record_num) + " 条记录字段不完整");
             return false;
@@ -329,6 +330,7 @@ ImportParseResult parseTxtContent(const std::string& content) {
         result.records.push_back(current);
         current = Record{};
         in_record = false;
+        amount_set = false;
         return true;
     };
 
@@ -366,6 +368,7 @@ ImportParseResult parseTxtContent(const std::string& content) {
                             "第 " + std::to_string(record_num) + " 条：金额无效");
                 return result;
             }
+            amount_set = true;
         } else if (key == "一级分类") {
             current.category_l1 = val;
         } else if (key == "二级分类") {

@@ -363,9 +363,9 @@ void registerRoutes(httplib::Server& svr, Database& db,
                 res.set_content(errorJson("type 字段必须是 'income' 或 'expense'").dump(), "application/json");
                 return;
             }
-            if (r.amount <= 0) {
+            if (r.amount < 0) {
                 res.status = 400;
-                res.set_content(errorJson("金额必须大于 0").dump(), "application/json");
+                res.set_content(errorJson("金额不能为负数").dump(), "application/json");
                 return;
             }
 
@@ -415,9 +415,9 @@ void registerRoutes(httplib::Server& svr, Database& db,
                 res.set_content(errorJson("type 字段必须是 'income' 或 'expense'").dump(), "application/json");
                 return;
             }
-            if (r.amount <= 0) {
+            if (r.amount < 0) {
                 res.status = 400;
-                res.set_content(errorJson("金额必须大于 0").dump(), "application/json");
+                res.set_content(errorJson("金额不能为负数").dump(), "application/json");
                 return;
             }
 
