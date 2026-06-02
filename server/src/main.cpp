@@ -58,9 +58,6 @@ static fs::path executableDirectory() {
 // CMake POST_BUILD 会把 frontend/、categories.json 复制到可执行文件同目录（见 CMakeLists.txt），
 // 因此 build/ 下通常两套路径都能命中；本函数按优先级依次尝试，命中即返回。
 static fs::path findRoot() {
-    // ── 策略 1：当前工作目录 ─────────────────────────────────────
-    // 典型场景：run.sh 末尾 `cd build && ./bookkeeping`，cwd 即为 build/，
-    // 且 POST_BUILD 已把资源复制到 build/，故 cwd 下可直接找到两个标志文件。
     // ── 策略 1：可执行文件所在目录（安装包 / 快捷方式启动时最可靠）──
     fs::path exe_dir = executableDirectory();
     if (!exe_dir.empty() && hasAppResources(exe_dir)) {

@@ -108,7 +108,7 @@ public:
     bool deleteRecord(int id);
 
     // ── 分类（用户可增删改；reset 从模板文件恢复）────────────
-    std::vector<CategoryL1> getCategories(const std::string& type = ""); // type 空=全部
+    std::vector<CategoryL1> getCategories(const std::string& type = "") const; // type 空=全部
     std::optional<CategoryL1> getCategoryL1ById(int id);
     int  createCategoryL1(const CategoryL1& cat);
     bool updateCategoryL1(int id, const CategoryL1& cat);

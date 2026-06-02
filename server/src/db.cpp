@@ -444,7 +444,7 @@ bool Database::deleteRecord(int id) {
 
 // ── 分类查询与管理 ─────────────────────────────────────────────────
 
-std::vector<CategoryL1> Database::getCategories(const std::string& type) {
+std::vector<CategoryL1> Database::getCategories(const std::string& type) const {
     std::vector<CategoryL1> result;
 
     std::string sql = "SELECT id, name, type, icon, sort_order FROM category_l1";
@@ -516,7 +516,8 @@ bool Database::updateCategoryL1(int id, const CategoryL1& cat) {
     try {
         executeSql(sql);
         return true;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << "[DB] 更新一级分类失败: " << e.what() << std::endl;
         return false;
     }
 }
@@ -526,7 +527,8 @@ bool Database::deleteCategoryL1(int id) {
         executeSql("DELETE FROM category_l2 WHERE l1_id=" + std::to_string(id));
         executeSql("DELETE FROM category_l1 WHERE id=" + std::to_string(id));
         return true;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << "[DB] 删除一级分类失败: " << e.what() << std::endl;
         return false;
     }
 }
@@ -547,7 +549,8 @@ bool Database::updateCategoryL2(int id, const CategoryL2& cat) {
     try {
         executeSql(sql);
         return true;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << "[DB] 更新二级分类失败: " << e.what() << std::endl;
         return false;
     }
 }
@@ -556,7 +559,8 @@ bool Database::deleteCategoryL2(int id) {
     try {
         executeSql("DELETE FROM category_l2 WHERE id=" + std::to_string(id));
         return true;
-    } catch (...) {
+    } catch (const std::exception& e) {
+        std::cerr << "[DB] 删除二级分类失败: " << e.what() << std::endl;
         return false;
     }
 }
@@ -660,7 +664,7 @@ bool Database::exportCategoriesToJson(const std::string& json_path) const {
         return false;
     }
 
-    auto all = const_cast<Database*>(this)->getCategories("");
+    auto all = getCategories("");
     json root;
     root["version"] = "1.0";
     root["updated"] = "exported";

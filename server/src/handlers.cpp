@@ -47,14 +47,18 @@ static void fillRecordQueryFromJson(RecordQuery& q, const json& j) {
     if (j.contains("amount_min")) {
         if (j["amount_min"].is_number())
             q.amount_min = j["amount_min"].get<double>();
-        else if (j["amount_min"].is_string() && !j["amount_min"].get<std::string>().empty())
-            q.amount_min = std::stod(j["amount_min"].get<std::string>());
+        else if (j["amount_min"].is_string() && !j["amount_min"].get<std::string>().empty()) {
+            try { q.amount_min = std::stod(j["amount_min"].get<std::string>()); }
+            catch (...) { /* 非法值 → 保留默认 -1 */ }
+        }
     }
     if (j.contains("amount_max")) {
         if (j["amount_max"].is_number())
             q.amount_max = j["amount_max"].get<double>();
-        else if (j["amount_max"].is_string() && !j["amount_max"].get<std::string>().empty())
-            q.amount_max = std::stod(j["amount_max"].get<std::string>());
+        else if (j["amount_max"].is_string() && !j["amount_max"].get<std::string>().empty()) {
+            try { q.amount_max = std::stod(j["amount_max"].get<std::string>()); }
+            catch (...) { /* 非法值 → 保留默认 -1 */ }
+        }
     }
     if (j.contains("sort_by") && j["sort_by"].is_string())
         q.sort_by = j["sort_by"].get<std::string>();
@@ -164,6 +168,17 @@ static json importErrorJson(const ImportParseResult& parsed) {
     if (!parsed.hint.empty()) body["hint"] = parsed.hint;
     if (parsed.row > 0) body["row"] = parsed.row;
     return body;
+}
+
+/** 校验 Record 字段合法性；返回空字符串表示通过，否则为错误消息 */
+static std::string validateRecord(const Record& r) {
+    if (r.datetime.empty() || r.type.empty())
+        return "缺少必填字段: datetime, type";
+    if (r.type != "income" && r.type != "expense")
+        return "type 字段必须是 'income' 或 'expense'";
+    if (r.amount < 0)
+        return "金额不能为负数";
+    return "";
 }
 
 static void logImportFailure(const ImportParseResult& parsed) {
@@ -399,20 +414,10 @@ void registerRoutes(httplib::Server& svr, Database& db,
             auto j = json::parse(req.body);
             Record r = jsonToRecord(j);
 
-            if (r.datetime.empty() || r.type.empty()) {
+            auto err = validateRecord(r);
+            if (!err.empty()) {
                 res.status = 400;
-                res.set_content(errorJson("缺少必填字段: datetime, type").dump(),
-                                "application/json");
-                return;
-            }
-            if (r.type != "income" && r.type != "expense") {
-                res.status = 400;
-                res.set_content(errorJson("type 字段必须是 'income' 或 'expense'").dump(), "application/json");
-                return;
-            }
-            if (r.amount < 0) {
-                res.status = 400;
-                res.set_content(errorJson("金额不能为负数").dump(), "application/json");
+                res.set_content(errorJson(err).dump(), "application/json");
                 return;
             }
 
@@ -450,21 +455,10 @@ void registerRoutes(httplib::Server& svr, Database& db,
             auto j = json::parse(req.body);
             Record r = jsonToRecord(j);
 
-            // 与 POST 保持一致的字段校验
-            if (r.datetime.empty() || r.type.empty()) {
+            auto err = validateRecord(r);
+            if (!err.empty()) {
                 res.status = 400;
-                res.set_content(errorJson("缺少必填字段: datetime, type").dump(),
-                                "application/json");
-                return;
-            }
-            if (r.type != "income" && r.type != "expense") {
-                res.status = 400;
-                res.set_content(errorJson("type 字段必须是 'income' 或 'expense'").dump(), "application/json");
-                return;
-            }
-            if (r.amount < 0) {
-                res.status = 400;
-                res.set_content(errorJson("金额不能为负数").dump(), "application/json");
+                res.set_content(errorJson(err).dump(), "application/json");
                 return;
             }
 
