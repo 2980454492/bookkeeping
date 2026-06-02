@@ -1,5 +1,5 @@
 ---
-name: bookkeeping-new-api
+name: new-api
 description: Guide for adding a new REST API endpoint to the bookkeeping server. Trigger when user wants to add a new route, create a new REST endpoint, or extend the HTTP API.
 ---
 

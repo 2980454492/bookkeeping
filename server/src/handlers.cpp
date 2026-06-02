@@ -117,7 +117,8 @@ static json recordToJson(const Record& r) {
     };
 }
 
-/** 从 POST/PUT 请求体解析；id 由 URL 提供，不在 body 中 */
+/** 从 POST/PUT 请求 JSON 解析为 Record。必填字段：datetime / type / amount；
+ *  category_l2 和 note 缺失时默认空字符串。id 由 URL 路径提供，不在 body 中。 */
 static Record jsonToRecord(const json& j) {
     Record r;
     if (j.contains("datetime"))    r.datetime    = j["datetime"].get<std::string>();

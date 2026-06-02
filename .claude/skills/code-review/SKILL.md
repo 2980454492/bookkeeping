@@ -1,5 +1,5 @@
 ---
-name: bookkeeping-code-review
+name: code-review
 description: Review C++ / JS / Shell / CMake changes in the bookkeeping project for bugs, security, and style violations. Trigger when user asks for code review, pre-commit check, or "check my changes".
 ---
 

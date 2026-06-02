@@ -122,6 +122,7 @@ function setFormType(prefix, type) {
 }
 
 // 渲染一级分类按钮网格；prefix 为 'f'（新增）或 'e'（编辑）
+// 渲染一级分类选择器（chip 按钮组）。prefix: 'f'=筛选表单 'e'=编辑弹窗，用于区分多套同名表单
 function renderCatL1Picker(prefix, selectedL1 = '', selectedL2 = '') {
     const type = getFormType(prefix);
     const picker = document.getElementById(`${prefix}CatL1Picker`);
@@ -140,7 +141,8 @@ function renderCatL1Picker(prefix, selectedL1 = '', selectedL2 = '') {
     updateCatL2Panel(prefix, selectedL1, selectedL2);
 }
 
-// 支出且已选一级分类时，在下方展示二级分类按钮；收入则隐藏
+// 更新二级分类面板（支出且已选一级时展示 chip 按钮，收入或无一级时隐藏）
+// prefix: 'f'=筛选表单 'e'=编辑弹窗，l1Name: 当前选中的一级分类名
 function updateCatL2Panel(prefix, l1Name, selectedL2 = '') {
     const type = getFormType(prefix);
     const groupId = prefix === 'f' ? 'catL2Group' : 'eCatL2Group';
@@ -390,6 +392,7 @@ const EXPORT_FILTER_IDS = {
     sortOrder: 'expFilterSortOrder'
 };
 
+// 从 DOM 读取筛选表单字段值。ids: 各 input 的 DOM id 映射对象（RECORD_FILTER_IDS 或 EXPORT_FILTER_IDS）
 function readFilterFields(ids) {
     return {
         type: document.getElementById(ids.type).value,
@@ -504,7 +507,8 @@ async function fetchRecordsUpTo(targetCount) {
     return rows.slice(0, Math.min(rows.length, targetCount));
 }
 
-// reset=true：筛选变更后从头加载；false 时由 loadMoreRecords 调用
+// 从后端拉取记录并更新列表。reset=true：清空分页从头加载（筛选/排序变更时）；
+// reset=false：在当前列表基础上追加一批（「加载更多」按钮 / 滚动触发）。
 async function loadRecords(reset = true) {
     if (recordsLoading) return;
     recordsLoading = true;
@@ -607,7 +611,8 @@ function sumRecordsInRange(records, dateFrom, dateTo, type) {
     return sum;
 }
 
-// 更新页面顶部汇总卡片（该月/上月/今年/去年收支）
+// 拉取近两年全部记录，计算并更新顶部 6 个汇总卡片：
+// sumMonthExpense / sumLastMonthExpense / sumYearExpense / sumYearIncome / sumLastYearExpense / sumLastYearIncome
 async function updateSummary() {
     try {
         const now = new Date();
@@ -1818,7 +1823,12 @@ function resetFilters() {
 
 // ── 初始化 ───────────────────────────────────────────────────────────
 
-// 页面加载完成后执行一次：拉数据 → 渲染 → 绑定事件
+// App 启动入口，按顺序执行五步：
+//   1. 拉分类 → 写入 categories 缓存（loadCategories）
+//   2. 填充分类选择器（筛选栏 / 新增弹窗 / 编辑弹窗）
+//   3. 拉记录列表 → 渲染表格 + 汇总卡片（loadRecords → render + updateSummary）
+//   4. 绑定事件（导航切换 / 筛选 / 排序 / 新增 / 编辑 / 删除 / 加载更多）
+//   5. 初始化统计页（年份选择列表 + 当前月视图）
 async function init() {
     const now = new Date();
     statsSelectedDay = toDateInputValue(now);

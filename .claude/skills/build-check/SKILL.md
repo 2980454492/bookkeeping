@@ -1,5 +1,5 @@
 ---
-name: bookkeeping-build-check
+name: build-check
 description: Verify the bookkeeping project builds successfully on both Linux and Windows (cross-compile) before committing. Trigger when user is about to commit, wants to verify changes compile, or asks "does it build?".
 ---
 

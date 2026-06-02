@@ -1,5 +1,5 @@
 ---
-name: bookkeeping-db-safe
+name: db-safe
 description: Rules for safely modifying the SQLite database schema. Trigger when user wants to add a table, add a column, change a schema, or modify database structure.
 ---
 

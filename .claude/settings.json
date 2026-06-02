@@ -15,6 +15,10 @@
     {
       "name": "db-safe",
       "path": ".claude/skills/db-safe/SKILL.md"
+    },
+    {
+      "name": "comment-review",
+      "path": ".claude/skills/comment-review/SKILL.md"
     }
   ],
   "permissions": {
