@@ -45,6 +45,9 @@ if [ ! -f "$SERVER_DIR/src/main.cpp" ]; then
     error "未找到源文件，请确认 server/src/ 目录完整"
     exit 1
 fi
+# 启用 pre-commit 文档同步校验（仅本地生效，安全幂等）
+git config core.hooksPath .githooks 2>/dev/null || true
+
 info "环境检查通过 ✓"
 
 # ── 步骤1：CMake 配置 ────────────────────────────────────────────

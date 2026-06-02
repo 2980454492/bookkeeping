@@ -44,6 +44,7 @@ bookkeeping/
 │   ├── run.sh             #   一键运行（Linux/WSL）
 │   ├── build-win.sh       #   交叉编译生成 Windows .exe
 │   ├── toolchain-win.cmake  #   CMake 交叉编译工具链
+│   ├── check-docs.sh      #   文档同步校验脚本
 │   └── run.bat            #   Windows 启动器
 ├── .claude/               # AI 辅助开发配置
 │   ├── CLAUDE.md          #   编码规范（Claude 始终加载）
@@ -53,6 +54,8 @@ bookkeeping/
 │       ├── build-check/   #     构建验证流程
 │       ├── new-api/       #     新增 API 流程
 │       └── db-safe/       #     数据库变更安全规则
+├── .githooks/             # Git hooks（pre-commit 文档校验等）
+│   └── pre-commit         #   提交前自动运行 check-docs.sh
 ├── mobile/                # ← 预留：手机 APP
 ├── requirements.md        # 需求文档
 └── .gitignore
@@ -157,12 +160,19 @@ sudo apt install -y g++-mingw-w64-x86-64-posix
 |------|------|------|
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/records` | 查询记录（支持筛选/分页/排序） |
+| GET | `/api/records/:id` | 获取单条记录 |
 | POST | `/api/records` | 新增记录 |
 | PUT | `/api/records/:id` | 修改记录 |
 | DELETE | `/api/records/:id` | 删除记录 |
+| POST | `/api/records/export` | 导出记录 |
+| POST | `/api/records/import` | 导入记录 |
 | GET | `/api/categories` | 获取分类列表 |
 | POST | `/api/categories/l1` | 新增一级分类 |
+| PUT | `/api/categories/l1/:id` | 修改一级分类 |
 | DELETE | `/api/categories/l1/:id` | 删除一级分类 |
+| POST | `/api/categories/l2` | 新增二级分类 |
+| PUT | `/api/categories/l2/:id` | 修改二级分类 |
+| DELETE | `/api/categories/l2/:id` | 删除二级分类 |
 | POST | `/api/categories/reset` | 恢复默认分类 |
 
 ---

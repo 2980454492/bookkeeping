@@ -135,7 +135,7 @@
 ```
 
 **关键结论**：
-- **桌面端和 Android 离线**，PC 是原生桌面窗口（WebView 渲染 Vue 前端 + 内嵌 C++ 后端），Android 用 Kotlin + Room
+- **桌面端和 Android 离线**，桌面端是原生桌面窗口（WebView 渲染 Vue 前端 + 内嵌 C++ 后端），Android 用 Kotlin + Room
 - **Web 和小程序在线**，共用一个云服务器上的 C++ Drogon 后端
 - **Vue 3 前端在 PC 和 Web 之间 100% 复用**（PC 用 WebView 加载，Web 通过浏览器加载）
 - **C++ 代码在桌面端和云服务器之间 100% 复用**（同一套 Drogon 代码，两个部署目标）
@@ -329,8 +329,8 @@ bookkeeping.exe
 | 制品 | 复用范围 | 复用率 |
 |------|---------|:------:|
 | C++ 业务逻辑库 | PC + 云端 Drogon + (Android JNI 可选) | 高 |
-| Vue 3 前端 | PC 端 + Web 端 | **100%** |
-| C++ Drogon API 层 | PC 端 + 云端 | **100%** |
+| Vue 3 前端 | 桌面端 + Web 端 | **100%** |
+| C++ Drogon API 层 | 桌面端 + 云端 | **100%** |
 | 微信小程序前端 | 独立开发 | 0% (但 API 复用) |
 | Android UI | 独立开发 | 0% (但 C++ 库可 JNI 复用) |
 
@@ -799,7 +799,7 @@ CREATE TABLE budgets (
 
 ### 7.3 数据隐私
 - 全本地存储，不上传数据到服务器
-- PC 端 C++ 后端仅监听 `127.0.0.1`（localhost），不对外暴露
+- 桌面端 C++ 后端仅监听 `127.0.0.1`（localhost），不对外暴露
 - Android APP 使用 Room 本地数据库，完全离线
 - 微信小程序为唯一需要外网的端（平台强制要求）
 

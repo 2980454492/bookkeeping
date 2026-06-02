@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════
+# pre-commit — git 提交前自动校验文档同步
+#
+# 调用 scripts/check-docs.sh，不通过则阻止提交。
+# 跳过: git commit --no-verify
+# ═══════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  pre-commit: 校验文档同步…"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+if "$REPO_ROOT/scripts/check-docs.sh"; then
+    echo ""
+    echo "✓ 文档校验通过，继续提交…"
+    exit 0
+else
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✗ 文档校验失败，提交已阻止"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  修复后重新提交，或跳过检查："
+    echo "    git commit --no-verify"
+    echo ""
+    exit 1
+fi

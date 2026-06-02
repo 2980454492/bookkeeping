@@ -168,33 +168,31 @@ i++;                        // i 自增
 - 新的设计决策 → 必须写"为什么"注释（为什么选这个方案而非其他）
 - 新的段落 → 用 `// ── xxx ──` 分隔线标注逻辑分组
 
-### 文档自动维护规则（全部 .md 文件）
+### 文档自动维护规则
 
 **项目中的所有 `.md` 文件必须保持一致，任何代码变更都须同步更新关联文档。**
 
 #### 受维护的文档清单
 
-| 文件 | 职责 | 何时更新 |
-|------|------|---------|
-| `README.md` | 项目概览、结构图、环境、API 表 | 任何目录/文件/API/端口变化 |
-| `requirements.md` | 功能需求清单 | 功能增删改 |
-| `.claude/CLAUDE.md` | 编码规范 | 规范变更 |
-| `.claude/skills/*/SKILL.md` | 各 skill 的审查/流程规则 | 流程变更、新增检查项 |
+| 文件 | 职责 |
+|------|------|
+| `README.md` | 项目概览、结构图、环境要求、API 表 |
+| `requirements.md` | 功能需求清单 |
+| `.claude/CLAUDE.md` | 编码规范 |
+| `.claude/skills/*/SKILL.md` | 各 skill 的审查/流程规则 |
 
 #### 具体同步规则
 
 | 变更类型 | 必须同步的文档 |
 |---------|--------------|
-| 新增/删除/重命名目录或文件 | `README.md`（项目结构图） |
-| 新增/删除脚本 | `README.md`（结构图 + 用法说明） |
+| 新增/删除/重命名目录或文件（含脚本） | `README.md`（项目结构图） |
 | 新增/修改 C++ 源文件 | `server/CMakeLists.txt` + `README.md`（src 树） |
 | 新增/修改/删除 API 端点 | `README.md`（API 表格）+ `requirements.md`（功能清单） |
-| 修改编码规范 | `.claude/CLAUDE.md` + `.claude/skills/code-review/SKILL.md` |
+| 修改编码规范 | `.claude/skills/code-review/SKILL.md` |
 | 新增/删除 skill | `README.md`（.claude 节）+ `.claude/settings.json` |
 | 修改数据库 schema | `README.md` + `.claude/skills/db-safe/SKILL.md` |
 | 修改构建依赖/环境要求 | `README.md`（环境要求）+ `requirements.md` |
 | 修改端口号 | `README.md` + `scripts/run.sh` + `scripts/run.bat` |
-| 修改 skill 流程/规则 | `.claude/skills/{对应skill}/SKILL.md` |
 
 **此规则无例外。** 修改代码时，第一步确认哪些文档需要更新，第二步改代码同时改文档，第三步验证文档间无矛盾。
 
