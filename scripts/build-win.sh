@@ -36,8 +36,9 @@ DEPS_DIR="$BUILD_DIR/_deps"
 DIST_DIR="$PROJECT_DIR/dist/Bookkeeping"
 CROSS_PREFIX="x86_64-w64-mingw32"
 
-CROSS_GCC="${CROSS_PREFIX}-gcc"
-CROSS_GXX="${CROSS_PREFIX}-g++"
+# httplib 使用 std::thread，须 posix 线程模型（默认 g++ 为 win32，无法编译）
+CROSS_GCC="${CROSS_PREFIX}-gcc-posix"
+CROSS_GXX="${CROSS_PREFIX}-g++-posix"
 CROSS_AR="${CROSS_PREFIX}-ar"
 CROSS_OBJDUMP="${CROSS_PREFIX}-objdump"
 
@@ -53,14 +54,22 @@ fi
 # ═══════════════════════════════════════════════════════════════════
 section "[1/6] 检查编译环境"
 
-# 1a. 交叉编译器
+# 1a. 交叉编译器（须 posix 线程模型，win32 不支持 std::thread）
 if ! command -v "$CROSS_GXX" &>/dev/null; then
-    die "未找到 mingw-w64 交叉编译器 ($CROSS_GXX)
+    die "未找到 mingw-w64 posix 交叉编译器 ($CROSS_GXX)
 
-  请运行以下命令安装：
+  请运行以下命令安装（均在 universe 仓库）：
 
+    sudo add-apt-repository universe   # 若提示「无法定位软件包」
     sudo apt update
-    sudo apt install -y g++-mingw-w64-x86-64-posix
+    sudo apt install -y mingw-w64
+
+  若 mingw-w64 不可用，按发行版安装：
+    Ubuntu 20.04: sudo apt install -y g++-mingw-w64-x86-64
+    Ubuntu 22.04+: sudo apt install -y g++-mingw-w64-x86-64-posix
+
+  安装后确认 posix 编译器存在：
+    $CROSS_GXX --version
 
   安装完成后重新运行此脚本。"
 fi
@@ -314,6 +323,7 @@ if [ ! -f "$ZLIB_DIR/.built" ]; then
 
     ZLIB_LOG=$(mktemp)
     if ! make -f win32/Makefile.gcc -j"$(nproc)" \
+        CC="$CROSS_GCC" AR="$CROSS_AR" \
         PREFIX="$CROSS_PREFIX-" \
         CFLAGS="-O2" \
         libz.a > "$ZLIB_LOG" 2>&1; then
@@ -357,19 +367,27 @@ ZLIB_LIB="$ZLIB_DIR/libz.a"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
+# 旧 CMake 缓存会锁定 win32 编译器，导致 httplib 报 std::thread 不存在
+if [ -f CMakeCache.txt ] && ! grep -qE 'CMAKE_CXX_COMPILER:.*g\+\+-posix' CMakeCache.txt; then
+    warn "CMake 缓存使用旧 win32 编译器，正在清理（保留 _deps）..."
+    find . -mindepth 1 -maxdepth 1 ! -name '_deps' -exec rm -rf {} +
+fi
+
 info "运行 CMake..."
 
 CMAKE_LOG=$(mktemp)
 if ! cmake "$SERVER_DIR" \
     -DCMAKE_TOOLCHAIN_FILE="$PROJECT_DIR/scripts/toolchain-win.cmake" \
+    -DCMAKE_C_COMPILER="$(command -v "$CROSS_GCC")" \
+    -DCMAKE_CXX_COMPILER="$(command -v "$CROSS_GXX")" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH="$SQLITE3_INC;$ZLIB_INC" \
     -DSQLite3_INCLUDE_DIR="$SQLITE3_INC" \
     -DSQLite3_LIBRARY="$SQLITE3_LIB" \
     -DZLIB_INCLUDE_DIR="$ZLIB_INC" \
     -DZLIB_LIBRARY="$ZLIB_LIB" \
-    -DCMAKE_CXX_FLAGS="-O2 -static-libgcc -static-libstdc++" \
-    -DCMAKE_EXE_LINKER_FLAGS="-static -lpthread -lws2_32" \
+    -DCMAKE_CXX_FLAGS="-O2 -pthread -static-libgcc -static-libstdc++" \
+    -DCMAKE_EXE_LINKER_FLAGS="-static -pthread -lws2_32" \
     > "$CMAKE_LOG" 2>&1; then
 
     error "CMake 配置失败！详细日志:"
@@ -393,6 +411,10 @@ if ! cmake "$SERVER_DIR" \
 fi
 
 rm -f "$CMAKE_LOG"
+
+if ! grep -qE 'CMAKE_CXX_COMPILER:.*g\+\+-posix' CMakeCache.txt; then
+    die "CMake 未使用 posix 编译器，请运行: ./scripts/build-win.sh clean"
+fi
 info "CMake 配置完成 ✓"
 
 # ═══════════════════════════════════════════════════════════════════
@@ -428,8 +450,12 @@ if ! cmake --build . -j"$(nproc)" > "$BUILD_LOG" 2>&1; then
     echo "  │ undefined reference to '__imp_WSACleanup'       │"
     echo "  │   → 缺少 -lws2_32，检查 CMakeLists.txt          │"
     echo "  │                                                 │"
+    echo "  │ 'thread' / 'mutex' is not a member of 'std'   │"
+    echo "  │   → CMake 缓存仍用 win32 编译器                 │"
+    echo "  │   → ./scripts/build-win.sh clean                │"
+    echo "  │                                                 │"
     echo "  │ undefined reference to 'pthread_*'              │"
-    echo "  │   → sudo apt install g++-mingw-w64-x86-64-posix │"
+    echo "  │   → 确认使用 x86_64-w64-mingw32-g++-posix       │"
     echo "  │                                                 │"
     echo "  │ undefined reference to 'sqlite3_*'              │"
     echo "  │   → file $SQLITE3_LIB (应为 PE 格式的 .a)       │"
@@ -526,7 +552,9 @@ echo ""
 echo "  EXE:  $DIST_DIR/bookkeeping-server.exe ($EXE_SIZE)"
 echo ""
 echo "  Windows 使用:"
-echo "    1. 复制 dist/Bookkeeping/ 到 Windows"
+echo "    1. 复制 dist/Bookkeeping/ 到 Windows，例如（WSL 中执行）："
+echo "       cp -r \"$DIST_DIR\" /mnt/d/Bookkeeping"
+echo "       → 目标路径: D:\\Bookkeeping\\"
 echo "    2. 双击 run.bat"
 echo "    3. 浏览器打开 http://127.0.0.1:18080"
 echo ""

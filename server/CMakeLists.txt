@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# MinGW posix 线程模型（toolchain-win.cmake 已指定 -posix 编译器）
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
 # ── 依赖库 ────────────────────────────────────────────────────
 find_package(SQLite3 REQUIRED)
 find_package(Threads REQUIRED)
